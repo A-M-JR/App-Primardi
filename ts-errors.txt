@@ -1,0 +1,10 @@
+﻿app/orcamentos/[id]/pdf/page.tsx(6,30): error TS2307: Cannot find module '@/components/pdf-quotation' or its corresponding type declarations.
+app/orcamentos/[id]/pdf/page.tsx(8,10): error TS2305: Module '"@/lib/mock-data"' has no exported member 'clienteMockData'.
+app/orcamentos/[id]/pdf/page.tsx(8,27): error TS2305: Module '"@/lib/mock-data"' has no exported member 'orcamentosMockData'.
+app/orcamentos/[id]/pdf/page.tsx(25,46): error TS7006: Parameter 'o' implicitly has an 'any' type.
+app/orcamentos/[id]/pdf/page.tsx(26,53): error TS7006: Parameter 'c' implicitly has an 'any' type.
+app/pedidos/[id]/pdf/page.tsx(6,26): error TS2307: Cannot find module '@/components/pdf-order' or its corresponding type declarations.
+app/pedidos/[id]/pdf/page.tsx(8,10): error TS2305: Module '"@/lib/mock-data"' has no exported member 'clienteMockData'.
+app/pedidos/[id]/pdf/page.tsx(8,27): error TS2305: Module '"@/lib/mock-data"' has no exported member 'pedidosMockData'.
+app/pedidos/[id]/pdf/page.tsx(25,40): error TS7006: Parameter 'p' implicitly has an 'any' type.
+app/pedidos/[id]/pdf/page.tsx(26,50): error TS7006: Parameter 'c' implicitly has an 'any' type.

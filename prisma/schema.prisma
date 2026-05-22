@@ -1,0 +1,646 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  GERENTE
+  VENDEDOR
+  OPERADOR
+
+  @@map("crm_user_role")
+}
+
+enum TipoCredito {
+  ETIQUETA
+  VALOR
+
+  @@map("crm_tipo_credito")
+}
+
+enum OperacaoCredito {
+  CREDITO
+  DEBITO
+
+  @@map("crm_operacao_credito")
+}
+
+enum ModuloStatus {
+  ORCAMENTO
+  PEDIDO
+
+  @@map("crm_modulo_status")
+}
+
+enum StatusSugestao {
+  PENDENTE
+  APROVADA
+  REJEITADA
+  APLICADA
+
+  @@map("crm_status_sugestao")
+}
+
+// ─────────────────────────────────────────────
+// EMPRESA
+// ─────────────────────────────────────────────
+
+model Empresa {
+  id                Int      @id @default(autoincrement())
+  razaoSocial       String
+  nomeFantasia      String
+  cnpj              String   @unique
+  inscricaoEstadual String?
+  telefone          String
+  email             String
+  cep               String
+  logradouro        String
+  numero            String
+  complemento       String?
+  bairro            String
+  cidade            String
+  estado            String
+  corSidebar        String?
+  corPrimaria       String?
+  logoUrl           String?
+  criadoEm          DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  users                User[]
+  vendedores           Vendedor[]
+  clientes             Cliente[]
+  produtos             Produto[]
+  categorias           Categoria[]
+  fornecedores         Fornecedor[]
+  tabelasPreco         TabelaPreco[]
+  orcamentos           Orcamento[]
+  pedidos              Pedido[]
+  movimentacoesCredito MovimentacaoCredito[]
+  status               Status[]
+  formasPagamento      FormaPagamento[]
+  aiConfig             AIConfig?
+  aiAprendizados       AIAprendizado[]
+  aiSugestoes          AISugestao[]
+  aiUsage              AIUsage[]
+
+  @@map("crm_empresas")
+}
+
+// ─────────────────────────────────────────────
+// USUÁRIOS E VENDEDORES
+// ─────────────────────────────────────────────
+
+model User {
+  id         Int      @id @default(autoincrement())
+  empresaId  Int
+  nome       String
+  email      String
+  senha      String
+  role       UserRole @default(OPERADOR)
+  ativo      Boolean  @default(true)
+  criadoEm   DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  vendedorId Int?
+
+  empresa      Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  vendedor     Vendedor?       @relation(fields: [vendedorId], references: [id], onDelete: SetNull)
+  chatMessages AIChatMessage[]
+
+  @@unique([empresaId, email])
+  @@index([empresaId])
+  @@index([role])
+  @@index([vendedorId])
+  @@index([ativo])
+  @@map("crm_users")
+}
+
+model Vendedor {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nome      String
+  email     String
+  telefone  String
+  comissao  Float    @default(0)
+  regiao    String?
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa    Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  users      User[]
+  orcamentos Orcamento[]
+  pedidos    Pedido[]
+
+  @@unique([empresaId, email])
+  @@index([empresaId])
+  @@index([nome])
+  @@index([ativo])
+  @@map("crm_vendedores")
+}
+
+// ─────────────────────────────────────────────
+// CLIENTES
+// ─────────────────────────────────────────────
+
+model Cliente {
+  id                    Int       @id @default(autoincrement())
+  empresaId             Int
+  razaoSocial           String
+  nomeFantasia          String?
+  cnpj                  String
+  ie                    String?
+  email                 String?
+  telefone              String
+  // Endereço estruturado (removido campo "endereco" texto livre)
+  logradouro            String?
+  numeroEnd             String?
+  complemento           String?
+  bairro                String?
+  cep                   String
+  cidade                String
+  estado                String
+  observacoes           String?
+  ativo                 Boolean   @default(true)
+  ultimaCompra          DateTime?
+  criadoEm              DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  compradorNome         String?
+  compradorTelefone     String?
+  saldoCreditoEtiquetas Int       @default(0)
+  saldoCreditoProdutos  Int       @default(0)
+  saldoCreditoValor     Float     @default(0)
+  tabelaPrecoId         Int?
+
+  empresa              Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  tabelaPreco          TabelaPreco?           @relation(fields: [tabelaPrecoId], references: [id])
+  produtosExclusivos   ClienteProduto[]
+  itensExclusivos      ItemExclusivoCliente[]
+  movimentacoesCredito MovimentacaoCredito[]
+  orcamentos           Orcamento[]
+  pedidos              Pedido[]
+  aiSugestoes          AISugestao[]
+
+  @@unique([empresaId, cnpj])
+  @@index([empresaId])
+  @@index([razaoSocial])
+  @@index([cnpj])
+  @@index([cidade])
+  @@index([ativo])
+  @@index([ultimaCompra])
+  @@index([criadoEm])
+  @@map("crm_clientes")
+}
+
+// ─────────────────────────────────────────────
+// CATÁLOGO
+// ─────────────────────────────────────────────
+
+model Categoria {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nome      String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  produtos Produto[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@index([ativo])
+  @@map("crm_categorias")
+}
+
+model Fornecedor {
+  id          Int      @id @default(autoincrement())
+  empresaId   Int
+  razaoSocial String
+  cnpj        String?
+  telefone    String?
+  email       String?
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  produtos Produto[]
+
+  @@index([empresaId])
+  @@index([ativo])
+  @@map("crm_fornecedores")
+}
+
+model Produto {
+  id            Int      @id @default(autoincrement())
+  empresaId     Int
+  codigo        String
+  nome          String
+  descricao     String?
+  fornecedorId  Int?
+  ean           String?
+  estoque       Float    @default(0)
+  precoBase     Float    @default(0)
+  categoriaId   Int?
+  unidadePadrao String   @default("UN")
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  empresa              Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  fornecedor           Fornecedor?           @relation(fields: [fornecedorId], references: [id], onDelete: SetNull)
+  categoria            Categoria?            @relation(fields: [categoriaId], references: [id], onDelete: SetNull)
+  clientesAutorizados  ClienteProduto[]
+  itensOrcamento       ItemOrcamento[]
+  itensPedido          ItemPedido[]
+  tabelasPreco         TabelaPrecoItem[]
+  movimentacoesEstoque MovimentacaoEstoque[]
+
+  @@unique([empresaId, codigo])
+  @@index([empresaId])
+  @@index([nome])
+  @@index([codigo])
+  @@index([ativo])
+  @@index([criadoEm])
+  @@map("crm_produtos")
+}
+
+// Rastreabilidade de estoque
+model MovimentacaoEstoque {
+  id            Int      @id @default(autoincrement())
+  empresaId     Int
+  produtoId     Int
+  tipo          String // ENTRADA | SAIDA | AJUSTE
+  quantidade    Float
+  estoqueAntes  Float
+  estoqueDepois Float
+  descricao     String?
+  pedidoId      Int?
+  criadoEm      DateTime @default(now())
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([produtoId])
+  @@index([empresaId])
+  @@index([criadoEm])
+  @@map("crm_movimentacoes_estoque")
+}
+
+// ─────────────────────────────────────────────
+// TABELAS DE PREÇO
+// ─────────────────────────────────────────────
+
+model TabelaPreco {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nome      String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa  Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  itens    TabelaPrecoItem[]
+  clientes Cliente[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@index([ativo])
+  @@map("crm_tabelas_preco")
+}
+
+model TabelaPrecoItem {
+  id            Int   @id @default(autoincrement())
+  tabelaPrecoId Int
+  produtoId     Int
+  preco         Float
+
+  tabelaPreco TabelaPreco @relation(fields: [tabelaPrecoId], references: [id], onDelete: Cascade)
+  produto     Produto     @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([tabelaPrecoId, produtoId])
+  @@index([tabelaPrecoId])
+  @@index([produtoId])
+  @@map("crm_tabelas_preco_itens")
+}
+
+model ClienteProduto {
+  clienteId Int
+  produtoId Int
+  preco     Float?
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@id([clienteId, produtoId])
+  @@map("crm_clientes_produtos")
+}
+
+// ─────────────────────────────────────────────
+// STATUS / FORMA DE PAGAMENTO
+// ─────────────────────────────────────────────
+
+model Status {
+  id        Int          @id @default(autoincrement())
+  empresaId Int
+  nome      String
+  ordem     Int
+  modulo    ModuloStatus
+  cor       String
+  ativo     Boolean      @default(true)
+  criadoEm  DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  empresa    Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  orcamentos Orcamento[]
+  pedidos    Pedido[]
+
+  @@unique([empresaId, modulo, ordem])
+  @@index([empresaId])
+  @@index([modulo, ordem])
+  @@index([ativo])
+  @@map("crm_status")
+}
+
+model FormaPagamento {
+  id                 Int      @id @default(autoincrement())
+  empresaId          Int
+  nome               String
+  quantidadeParcelas Int      @default(1)
+  ativo              Boolean  @default(true)
+  criadoEm           DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  empresa    Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  orcamentos Orcamento[]
+  pedidos    Pedido[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@index([ativo])
+  @@map("crm_formas_pagamento")
+}
+
+// ─────────────────────────────────────────────
+// ORÇAMENTOS
+// ─────────────────────────────────────────────
+
+model Orcamento {
+  id               Int       @id @default(autoincrement())
+  empresaId        Int
+  numero           String
+  clienteId        Int
+  vendedorId       Int
+  statusId         Int
+  formaPagamentoId Int?
+  observacoes      String?
+  totalGeral       Float
+  descontoCredito  Float     @default(0)
+  valorFrete       Float     @default(0)
+  tipoFrete        String?
+  prazoEntrega     DateTime?
+  ocCliente        String?
+  ativo            Boolean   @default(true)
+  criadoEm         DateTime  @default(now())
+  atualizadoEm     DateTime  @updatedAt
+
+  empresa        Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente        Cliente         @relation(fields: [clienteId], references: [id])
+  vendedor       Vendedor        @relation(fields: [vendedorId], references: [id])
+  status         Status          @relation(fields: [statusId], references: [id])
+  formaPagamento FormaPagamento? @relation(fields: [formaPagamentoId], references: [id])
+  itens          ItemOrcamento[]
+  pedidos        Pedido[]
+
+  @@unique([empresaId, numero])
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([vendedorId])
+  @@index([statusId])
+  @@index([criadoEm])
+  @@index([ativo])
+  @@index([ocCliente])
+  @@map("crm_orcamentos")
+}
+
+model ItemOrcamento {
+  id                Int     @id @default(autoincrement())
+  orcamentoId       Int
+  produtoId         Int?
+  descricao         String
+  quantidade        Float // Float para suportar frações
+  unidade           String
+  precoUnitario     Float
+  desconto          Float   @default(0)
+  total             Float
+  observacao        String?
+  quantidadeCredito Float   @default(0)
+
+  produto   Produto?  @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+
+  @@index([orcamentoId])
+  @@index([produtoId])
+  @@map("crm_itens_orcamento")
+}
+
+// ─────────────────────────────────────────────
+// PEDIDOS
+// ─────────────────────────────────────────────
+
+model Pedido {
+  id                     Int       @id @default(autoincrement())
+  empresaId              Int
+  numero                 String
+  orcamentoId            Int?
+  clienteId              Int
+  vendedorId             Int
+  statusId               Int
+  formaPagamentoId       Int?
+  observacoesEmbalagem   String?
+  observacoesFaturamento String?
+  nomeVendedor           String?
+  nomeComprador          String?
+  valorFrete             Float     @default(0)
+  tipoFrete              String?
+  observacoesGerais      String?
+  totalGeral             Float
+  prazoEntrega           DateTime?
+  ocCliente              String?
+  ativo                  Boolean   @default(true)
+  criadoEm               DateTime  @default(now())
+  atualizadoEm           DateTime  @updatedAt
+
+  empresa        Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente        Cliente         @relation(fields: [clienteId], references: [id])
+  vendedor       Vendedor        @relation(fields: [vendedorId], references: [id])
+  status         Status          @relation(fields: [statusId], references: [id])
+  formaPagamento FormaPagamento? @relation(fields: [formaPagamentoId], references: [id])
+  orcamento      Orcamento?      @relation(fields: [orcamentoId], references: [id])
+  itens          ItemPedido[]
+
+  @@unique([empresaId, numero])
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([vendedorId])
+  @@index([statusId])
+  @@index([criadoEm])
+  @@index([ativo])
+  @@index([orcamentoId])
+  @@index([ocCliente])
+  @@map("crm_pedidos")
+}
+
+model ItemPedido {
+  id                Int     @id @default(autoincrement())
+  pedidoId          Int
+  produtoId         Int?
+  descricao         String
+  quantidade        Float // Float para suportar frações
+  unidade           String
+  precoUnitario     Float
+  desconto          Float   @default(0)
+  total             Float
+  observacao        String?
+  quantidadeCredito Float   @default(0)
+
+  produto Produto? @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  pedido  Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@index([pedidoId])
+  @@index([produtoId])
+  @@map("crm_itens_pedido")
+}
+
+model ItemExclusivoCliente {
+  id        Int     @id @default(autoincrement())
+  clienteId Int
+  nome      String
+  descricao String?
+  preco     Float   @default(0)
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId])
+  @@map("crm_itens_exclusivos_clientes")
+}
+
+// ─────────────────────────────────────────────
+// CRÉDITO
+// ─────────────────────────────────────────────
+
+model MovimentacaoCredito {
+  id          Int             @id @default(autoincrement())
+  empresaId   Int
+  clienteId   Int
+  tipo        TipoCredito
+  operacao    OperacaoCredito
+  quantidade  Float
+  descricao   String?
+  orcamentoId Int?
+  criadoEm    DateTime        @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([criadoEm])
+  @@index([tipo])
+  @@index([operacao])
+  @@map("crm_movimentacoes_credito")
+}
+
+// ─────────────────────────────────────────────
+// AI
+// ─────────────────────────────────────────────
+
+model AIConfig {
+  id           Int      @id @default(autoincrement())
+  empresaId    Int      @unique // isolado por empresa
+  provider     String   @default("gemini-flash")
+  apiKey       String   @default("")
+  systemPrompt String   @default("Você é o assistente inteligente, focado em ajudar na gestão de orçamentos, pedidos e produtos.")
+  monthlyLimit Int      @default(500)
+  updatedAt    DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@map("crm_ai_configs")
+}
+
+model AIChatMessage {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  role      String
+  content   String
+  toolCalls Json?
+  imageUrl  String? // renomeado de "image" para clareza
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, timestamp])
+  @@map("crm_ai_chat_messages")
+}
+
+model AIUsage {
+  id         Int      @id @default(autoincrement())
+  empresaId  Int // isolado por empresa
+  monthYear  String
+  count      Int      @default(0)
+  tokensUsed Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, monthYear])
+  @@index([empresaId])
+  @@map("crm_ai_usage")
+}
+
+model AIAprendizado {
+  id        Int      @id @default(autoincrement())
+  empresaId Int // isolado por empresa
+  topico    String
+  licao     String
+  confianca Float    @default(1.0)
+  criadoEm  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, topico])
+  @@index([topico])
+  @@map("crm_ai_aprendizados")
+}
+
+model AISugestao {
+  id           Int            @id @default(autoincrement())
+  empresaId    Int // isolado por empresa
+  clienteId    Int?
+  tipo         String
+  dados        Json
+  raciocinio   String?
+  status       StatusSugestao @default(PENDENTE)
+  feedback     String?
+  criadoEm     DateTime       @default(now())
+  processadoEm DateTime?
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
+  @@index([status])
+  @@index([tipo])
+  @@index([clienteId])
+  @@map("crm_ai_sugestoes")
+}
