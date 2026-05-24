@@ -27,7 +27,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
   const pedidoMetrics: any[] = await prisma.$queryRaw`
     SELECT 
       COALESCE(SUM("totalGeral"), 0)::float as total_receita,
-      COUNT(*) FILTER (WHERE "statusId" NOT IN (SELECT id FROM "crm_status" WHERE "modulo" = 'pedido' AND ("nome" ILIKE '%Entregue%' OR "nome" ILIKE '%Entrega%')))::int as ativos_count
+      COUNT(*) FILTER (WHERE "statusId" NOT IN (SELECT id FROM "crm_status" WHERE "modulo" = 'PEDIDO' AND ("nome" ILIKE '%Entregue%' OR "nome" ILIKE '%Entrega%')))::int as ativos_count
     FROM "crm_pedidos"
     WHERE (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
       AND "ativo" = TRUE

@@ -17,6 +17,7 @@ import {
   Truck,
   Package,
   Table2,
+  Target,
 } from "lucide-react"
 import {
   Sidebar,
@@ -54,6 +55,11 @@ const mainMenuItems = [
     label: "Clientes",
     href: "/clientes",
     icon: Users,
+  },
+  {
+    label: "Leads (CRM)",
+    href: "/leads",
+    icon: Target,
   },
 ]
 

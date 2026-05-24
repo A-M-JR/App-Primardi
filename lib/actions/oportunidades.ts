@@ -39,7 +39,7 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
     })
 
     const rankingVendedores = vendedores.map(v => {
-        const pedidosVendedor = pedidos.filter(p => p.vendedorId === v.id && p.status?.nome === 'Entregue')
+        const pedidosVendedor = pedidos.filter(p => p.vendedorId === v.id && !p.status?.nome.toLowerCase().includes('cancelado'))
         const totalVendas = pedidosVendedor.reduce((acc, p) => acc + Number(p.totalGeral || 0), 0)
         return {
             id: v.id,
@@ -131,8 +131,9 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
     })
 
     // 5. Resumo de Métricas
-    const faturamentoTotal = pedidos.filter(p => p.status?.nome === 'Entregue').reduce((acc, p) => acc + Number(p.totalGeral), 0)
-    const ticketMedio = pedidos.length > 0 ? faturamentoTotal / pedidos.length : 0
+    const validPedidos = pedidos.filter(p => !p.status?.nome.toLowerCase().includes('cancelado'))
+    const faturamentoTotal = validPedidos.reduce((acc, p) => acc + Number(p.totalGeral), 0)
+    const ticketMedio = validPedidos.length > 0 ? faturamentoTotal / validPedidos.length : 0
 
     return {
         rankingVendedores,

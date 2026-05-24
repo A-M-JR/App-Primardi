@@ -16,6 +16,10 @@ import { AIDashboard } from "./dashboard-ia"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CRMConfig } from "./crm-config"
+import { useSearchParams } from "next/navigation"
+import { Suspense } from "react"
 
 function ConfiguracoesForm() {
     const { isAdmin, isLoading } = useAuth()
@@ -217,6 +221,7 @@ function ConfiguracoesForm() {
                                     id="razaoSocial"
                                     value={empresa.razaoSocial}
                                     onChange={(e) => setEmpresa({ ...empresa, razaoSocial: e.target.value })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -226,6 +231,7 @@ function ConfiguracoesForm() {
                                     id="nomeFantasia"
                                     value={empresa.nomeFantasia}
                                     onChange={(e) => setEmpresa({ ...empresa, nomeFantasia: e.target.value })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -242,6 +248,7 @@ function ConfiguracoesForm() {
                                                 fetchCNPJ(formatted)
                                             }
                                         }}
+                                        autoComplete="off"
                                         placeholder="00.000.000/0001-00"
                                         className="bg-muted/50 focus-visible:bg-background"
                                     />
@@ -266,6 +273,7 @@ function ConfiguracoesForm() {
                                         const value = e.target.value.replace(/[^\d.-]/g, '');
                                         setEmpresa({ ...empresa, inscricaoEstadual: value });
                                     }}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                     placeholder="Apenas números, pontos e traços"
                                 />
@@ -276,6 +284,7 @@ function ConfiguracoesForm() {
                                     id="telefone"
                                     value={empresa.telefone}
                                     onChange={(e) => setEmpresa({ ...empresa, telefone: formatPhone(e.target.value) })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                     placeholder="(00) 00000-0000"
                                 />
@@ -287,6 +296,7 @@ function ConfiguracoesForm() {
                                     type="email"
                                     value={empresa.email}
                                     onChange={(e) => setEmpresa({ ...empresa, email: e.target.value })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -314,6 +324,7 @@ function ConfiguracoesForm() {
                                                 fetchCEP(formatted)
                                             }
                                         }}
+                                        autoComplete="off"
                                         placeholder="00000-000"
                                         className="bg-muted/50 focus-visible:bg-background"
                                     />
@@ -334,6 +345,7 @@ function ConfiguracoesForm() {
                                     id="logradouro"
                                     value={empresa.endereco.logradouro}
                                     onChange={(e) => setEmpresa({ ...empresa, endereco: { ...empresa.endereco, logradouro: e.target.value } })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -343,6 +355,7 @@ function ConfiguracoesForm() {
                                     id="numero"
                                     value={empresa.endereco.numero}
                                     onChange={(e) => setEmpresa({ ...empresa, endereco: { ...empresa.endereco, numero: e.target.value } })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -352,6 +365,7 @@ function ConfiguracoesForm() {
                                     id="complemento"
                                     value={empresa.endereco.complemento || ""}
                                     onChange={(e) => setEmpresa({ ...empresa, endereco: { ...empresa.endereco, complemento: e.target.value } })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -361,6 +375,7 @@ function ConfiguracoesForm() {
                                     id="bairro"
                                     value={empresa.endereco.bairro}
                                     onChange={(e) => setEmpresa({ ...empresa, endereco: { ...empresa.endereco, bairro: e.target.value } })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -370,6 +385,7 @@ function ConfiguracoesForm() {
                                     id="cidade"
                                     value={empresa.endereco.cidade}
                                     onChange={(e) => setEmpresa({ ...empresa, endereco: { ...empresa.endereco, cidade: e.target.value } })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background"
                                 />
                             </div>
@@ -380,6 +396,7 @@ function ConfiguracoesForm() {
                                     value={empresa.endereco.estado}
                                     maxLength={2}
                                     onChange={(e) => setEmpresa({ ...empresa, endereco: { ...empresa.endereco, estado: e.target.value.toUpperCase() } })}
+                                    autoComplete="off"
                                     className="bg-muted/50 focus-visible:bg-background uppercase"
                                 />
                             </div>
@@ -529,6 +546,7 @@ function ConfiguracoesForm() {
                                                 type={showApiKey ? "text" : "password"}
                                                 value={aiConfig.apiKey}
                                                 onChange={(e) => updateAIConfig({ apiKey: e.target.value })}
+                                                autoComplete="new-password"
                                                 placeholder={
                                                     aiConfig.provider === 'gemini-flash' ? 'AIzaSy...' : 
                                                     aiConfig.provider === 'abacus-route' ? 'Abacus API Key...' : 'sk-proj-...'
@@ -589,10 +607,34 @@ function ConfiguracoesForm() {
     )
 }
 
+function ConfiguracoesPageContent() {
+    const searchParams = useSearchParams();
+    const tab = searchParams.get('tab') || 'geral';
+
+    return (
+        <div className="max-w-4xl mx-auto">
+            <Tabs defaultValue={tab} className="w-full">
+                <TabsList className="mb-6 grid w-full grid-cols-2 md:w-[400px]">
+                    <TabsTrigger value="geral">Geral & IA</TabsTrigger>
+                    <TabsTrigger value="crm">CRM (Leads)</TabsTrigger>
+                </TabsList>
+                <TabsContent value="geral" className="focus-visible:outline-none focus-visible:ring-0 mt-0">
+                    <ConfiguracoesForm />
+                </TabsContent>
+                <TabsContent value="crm" className="focus-visible:outline-none focus-visible:ring-0 mt-0">
+                    <CRMConfig />
+                </TabsContent>
+            </Tabs>
+        </div>
+    )
+}
+
 export default function ConfiguracoesPage() {
     return (
         <AppShell>
-            <ConfiguracoesForm />
+            <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin size-8 text-primary" /></div>}>
+                <ConfiguracoesPageContent />
+            </Suspense>
         </AppShell>
     )
 }

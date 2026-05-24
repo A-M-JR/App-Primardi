@@ -91,6 +91,12 @@ model Empresa {
   aiAprendizados       AIAprendizado[]
   aiSugestoes          AISugestao[]
   aiUsage              AIUsage[]
+  
+  // Integrações
+  apiToken             String?       @unique
+  origensLead          OrigemLead[]
+  statusFunil          FunilStatus[]
+  leads                Lead[]
 
   @@map("crm_empresas")
 }
@@ -139,6 +145,7 @@ model Vendedor {
   users      User[]
   orcamentos Orcamento[]
   pedidos    Pedido[]
+  leads      Lead[]
 
   @@unique([empresaId, email])
   @@index([empresaId])
@@ -188,6 +195,7 @@ model Cliente {
   orcamentos           Orcamento[]
   pedidos              Pedido[]
   aiSugestoes          AISugestao[]
+  leads                Lead[]
 
   @@unique([empresaId, cnpj])
   @@index([empresaId])
@@ -646,4 +654,79 @@ model AISugestao {
   @@index([tipo])
   @@index([clienteId])
   @@map("crm_ai_sugestoes")
+}
+
+// ─────────────────────────────────────────────
+// CRM - LEADS E FUNIL DE VENDAS
+// ─────────────────────────────────────────────
+
+model OrigemLead {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nome      String
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  leads   Lead[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@map("crm_origem_lead")
+}
+
+model FunilStatus {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nome      String
+  cor       String
+  ordem     Int
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  leads   Lead[]
+
+  @@unique([empresaId, ordem])
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@map("crm_funil_status")
+}
+
+model Lead {
+  id             Int       @id @default(autoincrement())
+  empresaId      Int
+  nome           String
+  email          String?
+  telefone       String?
+  cep            String?
+  cargo          String?
+  nomeEmpresa    String?
+  valorEstimado  Float     @default(0)
+  temperatura    String?   // Frio, Morno, Quente
+  observacoes    String?
+  origemId       Int?
+  statusId       Int?
+  vendedorId     Int?
+  clienteId      Int?
+  ativo          Boolean   @default(true)
+  dataConversao  DateTime?
+  criadoEm       DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  empresa  Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  origem   OrigemLead?  @relation(fields: [origemId], references: [id], onDelete: SetNull)
+  status   FunilStatus? @relation(fields: [statusId], references: [id], onDelete: SetNull)
+  vendedor Vendedor?    @relation(fields: [vendedorId], references: [id], onDelete: SetNull)
+  cliente  Cliente?     @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
+  @@index([origemId])
+  @@index([statusId])
+  @@index([vendedorId])
+  @@index([clienteId])
+  @@index([ativo])
+  @@map("crm_leads")
 }

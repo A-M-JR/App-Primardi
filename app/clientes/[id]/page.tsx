@@ -342,9 +342,20 @@ export default function ClienteDetailPage({
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">Editar Cliente</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-3">
+                Editar Cliente
+                {clienteOrig.leadOrigem && (
+                  <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 font-medium">
+                    <Sparkles className="size-3 mr-1" />
+                    Origem: Lead do CRM
+                  </Badge>
+                )}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
                 Cliente desde {clienteOrig.criadoEm ? new Date(clienteOrig.criadoEm).toLocaleDateString("pt-BR") : "Desconhecido"}
+                {clienteOrig.leadOrigem?.dataConversao && (
+                  <span className="text-indigo-600/80 text-xs">(Convertido em {new Date(clienteOrig.leadOrigem.dataConversao).toLocaleDateString("pt-BR")})</span>
+                )}
               </p>
             </div>
           </div>
@@ -551,23 +562,7 @@ export default function ClienteDetailPage({
                   <Card className="shadow-sm border-border/50">
                     <CardHeader className="pb-4 font-medium">Informações Adicionais</CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Tabela de Preços Vinculada</Label>
-                        <Select 
-                          value={formData.tabelaPrecoId} 
-                          onValueChange={(val) => setFormData(prev => ({ ...prev, tabelaPrecoId: val }))}
-                        >
-                          <SelectTrigger className="bg-muted/30 h-10">
-                            <SelectValue placeholder="Selecione uma tabela (opcional)" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Nenhuma / Preço Base</SelectItem>
-                            {tabelas.map(t => (
-                              <SelectItem key={t.id} value={t.id.toString()}>{t.nome}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+
                       <div className="space-y-2">
                         <Label>Observações</Label>
                         <Textarea name="observacoes" value={formData.observacoes} onChange={handleChange} className="min-h-[100px] bg-muted/30 resize-none text-xs" />

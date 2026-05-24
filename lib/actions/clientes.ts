@@ -128,11 +128,16 @@ export async function getClienteById(id: number) {
     SELECT * FROM "crm_itens_exclusivos_clientes" WHERE "clienteId" = ${id}
   ` as any[]
 
+  const leads = await prisma.$queryRaw`
+    SELECT id, "valorEstimado", observacoes, "dataConversao" FROM "crm_leads" WHERE "clienteId" = ${id} LIMIT 1
+  ` as any[]
+
   return {
     ...cliente,
     itensExclusivos,
     orcamentos,
     pedidos,
+    leadOrigem: leads.length > 0 ? leads[0] : null,
     criadoEm: cliente.criadoEm.toISOString(),
     updatedAt: cliente.updatedAt.toISOString(),
     ultimaCompra: cliente.ultimaCompra ? cliente.ultimaCompra.toISOString() : null,
@@ -165,6 +170,20 @@ export async function saveCliente(data: any) {
   const itensExclusivos = rest.itensExclusivos || []
 
   if (!id) {
+    if (prismaData.cnpj) {
+      const existing = await prisma.cliente.findFirst({
+        where: { cnpj: prismaData.cnpj, empresaId: 1 }
+      })
+      if (existing) {
+        return { 
+          success: false, 
+          code: "DUPLICATE_CNPJ", 
+          message: "Já existe um cliente cadastrado com este CNPJ na base.",
+          existingClienteId: existing.id 
+        }
+      }
+    }
+
     const created = await prisma.$transaction(async (tx) => {
       // Inserção manual do Cliente via raw SQL
       const now = new Date()

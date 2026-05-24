@@ -119,6 +119,7 @@ export async function getPedidos(params: {
   
   let pedidos = dbPedidos.map(p => ({
     ...p,
+    statusObj: p.status,
     status: mapStatusIdToStr(p.status?.nome || ''),
     criadoEm: p.criadoEm.toISOString(),
     atualizadoEm: p.atualizadoEm.toISOString(),
@@ -180,6 +181,7 @@ export async function getPedidoById(id: number, requesterId?: number) {
 
   return {
     ...pedido,
+    statusObj: pedido.status,
     status: mapStatusIdToStr(pedido.status?.nome || ''),
     criadoEm: pedido.criadoEm.toISOString(),
     atualizadoEm: pedido.atualizadoEm.toISOString(),
@@ -264,6 +266,7 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
   revalidatePath(`/pedidos/${id}`)
   return {
     ...updated,
+    statusObj: updated.status,
     status: mapStatusIdToStr(updated.status?.nome || ''),
     criadoEm: updated.criadoEm.toISOString(),
     atualizadoEm: updated.atualizadoEm.toISOString(),
@@ -311,6 +314,7 @@ export async function updatePedidoDetails(id: number, data: {
   revalidatePath(`/pedidos/${id}`)
   return {
     ...updated,
+    statusObj: updated.status,
     status: mapStatusIdToStr(updated.status?.nome || ''),
     criadoEm: updated.criadoEm.toISOString(),
     atualizadoEm: updated.atualizadoEm.toISOString(),

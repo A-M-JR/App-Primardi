@@ -70,8 +70,8 @@ export default function OportunidadesPage() {
                     setAiInsight(savedData.insight)
                     setLastUpdated(new Date(savedData.criadoEm))
                 } else {
-                    // Se não houver insight salvo no banco, gera o primeiro automaticamente
-                    handleGenerateIAAnalysis()
+                    // Se não houver insight salvo no banco, deixa vazio para o usuário gerar quando quiser
+                    setAiInsight(null)
                 }
             } catch (error) {
                 console.error(error)
@@ -282,7 +282,15 @@ export default function OportunidadesPage() {
                                     </div>
                                 </form>
                             </div>
-                        ) : null}
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-20 gap-6 rounded-3xl bg-white/40 dark:bg-black/20 border border-violet-500/10 border-dashed">
+                                <Bot className="size-12 text-violet-500/50" />
+                                <div className="text-center">
+                                    <p className="text-lg font-bold text-violet-700 dark:text-violet-400">Pronto para analisar seus dados</p>
+                                    <p className="text-sm text-muted-foreground">Clique em "Recalcular Estratégia de Crescimento" para gerar insights atualizados.</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 

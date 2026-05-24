@@ -12,7 +12,9 @@ import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { saveCliente } from "@/lib/actions/clientes"
+import { vincularLeadACliente } from "@/lib/actions/leads"
 import { getTabelasPreco } from "@/lib/actions/tabelas-preco"
+import Swal from "sweetalert2"
 import {
     Select,
     SelectContent,
@@ -269,15 +271,47 @@ function NovoClienteContent() {
                 (dataToSave as any).tabelaPrecoId = Number(dataToSave.tabelaPrecoId)
             }
 
-            await saveCliente(dataToSave)
+            const result = await saveCliente(dataToSave)
+
+            if (result && result.success === false && result.code === "DUPLICATE_CNPJ") {
+                const leadId = searchParams.get("leadId")
+                if (leadId) {
+                    Swal.fire({
+                        title: "Cliente Já Cadastrado!",
+                        text: "Já existe um cliente na base com este CNPJ. Deseja vincular o Lead atual a este cliente existente?",
+                        icon: "warning",
+                        showCancelButton: true,
+                        confirmButtonColor: "#10b981",
+                        cancelButtonColor: "#64748b",
+                        confirmButtonText: "Sim, vincular ao cliente",
+                        cancelButtonText: "Não, cancelar"
+                    }).then(async (swalResult) => {
+                        if (swalResult.isConfirmed) {
+                            try {
+                                await vincularLeadACliente(Number(leadId), result.existingClienteId)
+                                toast.success("Lead vinculado ao cliente existente com sucesso!")
+                                router.push("/clientes")
+                                router.refresh()
+                            } catch (err) {
+                                toast.error("Erro ao vincular lead.")
+                            }
+                        }
+                    })
+                } else {
+                    toast.error(result.message || "CNPJ duplicado.")
+                }
+                setIsSaving(false)
+                return
+            }
+
             toast.success("Cliente salvo com sucesso!", {
                 description: `O cliente ${formData.razaoSocial} foi adicionado à carteira.`
             })
             router.push("/clientes")
             router.refresh()
-        } catch (error) {
+        } catch (error: any) {
             console.error(error)
-            toast.error("Erro ao salvar o cliente no banco de dados.")
+            toast.error(error.message || "Erro ao salvar o cliente no banco de dados.")
         } finally {
             setIsSaving(false)
         }
@@ -649,23 +683,7 @@ function NovoClienteContent() {
                                 <CardTitle className="text-base">Informações Adicionais</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Tabela de Preços Vinculada</Label>
-                                    <Select 
-                                        value={formData.tabelaPrecoId} 
-                                        onValueChange={(val) => setFormData(prev => ({ ...prev, tabelaPrecoId: val }))}
-                                    >
-                                        <SelectTrigger className="bg-muted/30 h-10">
-                                            <SelectValue placeholder="Selecione uma tabela (opcional)" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">Nenhuma / Preço Base</SelectItem>
-                                            {tabelas.map(t => (
-                                                <SelectItem key={t.id} value={t.id.toString()}>{t.nome}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+
                                 <div className="space-y-2">
                                     <Label>Observações do Cliente</Label>
                                     <Textarea
