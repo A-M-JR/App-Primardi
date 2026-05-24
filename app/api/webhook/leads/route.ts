@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       nomeEmpresa,
       valorEstimado,
       observacoes,
+      cep,
       origem: origemNome = "Site", // Default origin
     } = body;
 
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
         nomeEmpresa,
         valorEstimado: valorEstimado ? parseFloat(valorEstimado) : 0,
         observacoes,
+        cep,
         origemId: origem.id,
         statusId: firstStatus?.id || null, // Might be null if funnel has no status yet
         vendedorId: null, // As per user request, leads stay without owner until someone picks them up
