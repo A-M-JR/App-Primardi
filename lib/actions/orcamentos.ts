@@ -39,18 +39,27 @@ export async function getOrcamentos(params: {
 
   // 1. Otimização SQL Raw para contadores e KPIs
   let statusFilterSql = Prisma.sql`p."ativo" = TRUE`
-  if (params.status === 'rascunho') statusFilterSql = Prisma.sql`p."statusId" = 1`
-  else if (params.status === 'enviado') statusFilterSql = Prisma.sql`p."statusId" = 4`
-  else if (params.status === 'aprovado') statusFilterSql = Prisma.sql`p."statusId" = 2`
-  else if (params.status === 'recusado') statusFilterSql = Prisma.sql`p."statusId" = 5`
+  let statusIds: Record<string, number> = {}
+  const orcStatuses = await prisma.status.findMany({ where: { modulo: ModuloStatus.ORCAMENTO } })
+  for (const s of orcStatuses) {
+    statusIds[s.nome.toLowerCase()] = s.id
+  }
+
+  // Se não existir, a gente usa 0 para não retornar nada em caso de erro
+  const getSId = (name: string) => statusIds[name.toLowerCase()] || 0
+
+  if (params.status === 'rascunho') statusFilterSql = Prisma.sql`p."statusId" = ${getSId('pendente')}`
+  else if (params.status === 'enviado') statusFilterSql = Prisma.sql`p."statusId" = ${getSId('enviado')}`
+  else if (params.status === 'aprovado') statusFilterSql = Prisma.sql`p."statusId" = ${getSId('aprovado')}`
+  else if (params.status === 'recusado') statusFilterSql = Prisma.sql`p."statusId" = ${getSId('recusado')}`
 
   const counts: any[] = await prisma.$queryRaw`
     SELECT 
       COUNT(*) FILTER (WHERE ${statusFilterSql})::int as total_filtrado,
-      COUNT(*) FILTER (WHERE p."statusId" = 4)::int as vigentes,
-      COUNT(*) FILTER (WHERE p."statusId" = 2)::int as aprovados,
-      COUNT(*) FILTER (WHERE p."statusId" IN (1, 5))::int as parados,
-      COALESCE(SUM(p."totalGeral") FILTER (WHERE p."statusId" <> 5), 0)::float as total_valor
+      COUNT(*) FILTER (WHERE p."statusId" = ${getSId('enviado')})::int as vigentes,
+      COUNT(*) FILTER (WHERE p."statusId" = ${getSId('aprovado')})::int as aprovados,
+      COUNT(*) FILTER (WHERE p."statusId" IN (${getSId('pendente')}, ${getSId('recusado')}))::int as parados,
+      COALESCE(SUM(p."totalGeral") FILTER (WHERE p."statusId" <> ${getSId('recusado')}), 0)::float as total_valor
     FROM "crm_orcamentos" p
     LEFT JOIN "crm_clientes" c ON p."clienteId" = c.id
     WHERE (
@@ -82,10 +91,10 @@ export async function getOrcamentos(params: {
   }
 
   if (params.status) {
-    if (params.status === 'rascunho') where.statusId = 1
-    else if (params.status === 'enviado') where.statusId = 4
-    else if (params.status === 'aprovado') where.statusId = 2
-    else if (params.status === 'recusado') where.statusId = 5
+    if (params.status === 'rascunho') where.statusId = getSId('pendente')
+    else if (params.status === 'enviado') where.statusId = getSId('enviado')
+    else if (params.status === 'aprovado') where.statusId = getSId('aprovado')
+    else if (params.status === 'recusado') where.statusId = getSId('recusado')
   }
 
   if (params.vendedorId) where.vendedorId = params.vendedorId
@@ -190,22 +199,42 @@ export async function updateOrcamentoStatus(id: number, statusIdent: string | nu
   let statusId = Number(statusIdent)
   
   if (isNaN(statusId)) {
-    // Mapeamento de nomes amigáveis para IDs do Banco (baseado no seed.sql)
     const s = String(statusIdent).toLowerCase()
-    if (s === 'rascunho' || s === 'pendente') statusId = 1
-    else if (s === 'aprovado') statusId = 2
-    else if (s === 'enviado') statusId = 4
-    else if (s === 'recusado') statusId = 5
-    else {
-      // Busca dinâmica se não for um dos padrões
-      const found = await prisma.status.findFirst({
-        where: { 
+    let officialName = 'Pendente'
+    if (s === 'rascunho' || s === 'pendente') officialName = 'Pendente'
+    else if (s === 'aprovado') officialName = 'Aprovado'
+    else if (s === 'enviado') officialName = 'Enviado'
+    else if (s === 'recusado' || s === 'rejeitado') officialName = 'Recusado'
+    else officialName = String(statusIdent)
+
+    let found = await prisma.status.findFirst({
+      where: { 
+        modulo: ModuloStatus.ORCAMENTO,
+        nome: { equals: officialName, mode: 'insensitive' }
+      }
+    })
+    
+    if (found) {
+      statusId = found.id
+    } else {
+      const orc = await prisma.orcamento.findUnique({ where: { id }, select: { empresaId: true } })
+      const empId = orc?.empresaId || 1
+      const count = await prisma.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
+      let cor = '#64748b'
+      if (officialName === 'Aprovado') cor = '#10b981'
+      else if (officialName === 'Enviado') cor = '#3b82f6'
+      else if (officialName === 'Recusado') cor = '#ef4444'
+
+      const created = await prisma.status.create({
+        data: {
+          empresaId: empId,
+          nome: officialName,
           modulo: ModuloStatus.ORCAMENTO,
-          nome: { contains: s, mode: 'insensitive' }
+          ordem: count + 1,
+          cor
         }
       })
-      if (found) statusId = found.id
-      else statusId = 1 // Fallback para pendente
+      statusId = created.id
     }
   }
 
@@ -286,10 +315,41 @@ export async function saveOrcamento(data: any, requesterId?: number) {
   
   if (!finalStatusId && rest.statusStr) {
     const s = String(rest.statusStr).toLowerCase()
-    if (s === 'rascunho' || s === 'pendente') finalStatusId = 1
-    else if (s === 'aprovado') finalStatusId = 2
-    else if (s === 'enviado') finalStatusId = 4
-    else if (s === 'recusado') finalStatusId = 5
+    let officialName = 'Pendente'
+    if (s === 'rascunho' || s === 'pendente') officialName = 'Pendente'
+    else if (s === 'aprovado') officialName = 'Aprovado'
+    else if (s === 'enviado') officialName = 'Enviado'
+    else if (s === 'recusado' || s === 'rejeitado') officialName = 'Recusado'
+    else officialName = String(rest.statusStr)
+
+    let found = await prisma.status.findFirst({
+      where: { 
+        modulo: ModuloStatus.ORCAMENTO,
+        nome: { equals: officialName, mode: 'insensitive' }
+      }
+    })
+
+    if (found) {
+      finalStatusId = found.id
+    } else {
+      const empId = ctx?.empresaId || 1
+      const count = await prisma.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
+      let cor = '#64748b'
+      if (officialName === 'Aprovado') cor = '#10b981'
+      else if (officialName === 'Enviado') cor = '#3b82f6'
+      else if (officialName === 'Recusado') cor = '#ef4444'
+
+      const created = await prisma.status.create({
+        data: {
+          empresaId: empId,
+          nome: officialName,
+          modulo: ModuloStatus.ORCAMENTO,
+          ordem: count + 1,
+          cor
+        }
+      })
+      finalStatusId = created.id
+    }
   }
 
   const totalGeral = isNaN(Number(rest.totalGeral)) ? 0 : Number(rest.totalGeral)
@@ -324,7 +384,7 @@ export async function saveOrcamento(data: any, requesterId?: number) {
     numero: String(numero || ""),
     clienteId: Number(rest.clienteId),
     vendedorId: Number(forcedVendedorId || 0), // Garante que seja um número (campo obrigatório no banco)
-    statusId: finalStatusId || 1, // Default para 1 (Pendente)
+    statusId: finalStatusId || null, // Se não tiver, será preenchido abaixo
     formaPagamentoId: rest.formaPagamentoId ? Number(rest.formaPagamentoId) : null,
     observacoes: rest.observacoes || "",
     prazoEntrega: rest.prazoEntrega ? new Date(rest.prazoEntrega) : null,
@@ -338,9 +398,20 @@ export async function saveOrcamento(data: any, requesterId?: number) {
 
   if (!id) {
     const created = await prisma.$transaction(async (tx) => {
+      let sid = prismaData.statusId
+      if (!sid) {
+        let found = await tx.status.findFirst({ where: { modulo: ModuloStatus.ORCAMENTO, nome: { equals: 'Pendente', mode: 'insensitive' } } })
+        if (!found) {
+          const count = await tx.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
+          found = await tx.status.create({ data: { empresaId: ctx?.empresaId || 1, nome: 'Pendente', modulo: ModuloStatus.ORCAMENTO, ordem: count + 1, cor: '#64748b' } })
+        }
+        sid = found.id
+      }
+
       const orc = await tx.orcamento.create({
         data: {
           ...prismaData,
+          statusId: sid,
           itens: {
             create: itens.map((it: any) => {
               const qty = Number(typeof it.quantidade === 'string' ? it.quantidade.replace(',', '.') : it.quantidade) || 0
@@ -424,11 +495,22 @@ export async function saveOrcamento(data: any, requesterId?: number) {
 
     const validItemIds = itens.filter((i: any) => i.id).map((i: any) => Number(i.id));
 
-    const updated = await prisma.orcamento.update({
-      where: { id: Number(id) },
-      data: {
-        ...prismaData,
-        itens: {
+      let sid = prismaData.statusId
+      if (!sid) {
+        let found = await prisma.status.findFirst({ where: { modulo: ModuloStatus.ORCAMENTO, nome: { equals: 'Pendente', mode: 'insensitive' } } })
+        if (!found) {
+          const count = await prisma.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
+          found = await prisma.status.create({ data: { empresaId: ctx?.empresaId || 1, nome: 'Pendente', modulo: ModuloStatus.ORCAMENTO, ordem: count + 1, cor: '#64748b' } })
+        }
+        sid = found.id
+      }
+
+      const updated = await prisma.orcamento.update({
+        where: { id: Number(id) },
+        data: {
+          ...prismaData,
+          statusId: sid,
+          itens: {
           deleteMany: { id: { notIn: validItemIds } },
           update: itens.filter((i: any) => i.id).map((it: any) => ({
             where: { id: Number(it.id) },

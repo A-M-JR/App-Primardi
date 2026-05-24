@@ -5,16 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Search, Package, ArrowDownToLine, ArrowUpFromLine, Activity } from "lucide-react"
+import { Search, Package, ArrowDownToLine, ArrowUpFromLine, Activity, Clock } from "lucide-react"
 import { useState, useMemo } from "react"
 import { getEstoqueProdutos } from "@/lib/actions/estoque"
 import { useDataQuery } from "@/hooks/use-data-query"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EstoqueMovimentacaoDialog } from "@/components/estoque-movimentacao-dialog"
+import { EstoqueHistoricoDialog } from "@/components/estoque-historico-dialog"
 
 export default function EstoquePage() {
   const [search, setSearch] = useState("")
   const [movimentacaoOpen, setMovimentacaoOpen] = useState(false)
+  const [historicoOpen, setHistoricoOpen] = useState(false)
   const [selectedProduto, setSelectedProduto] = useState<any | null>(null)
 
   const { data: produtosList, isLoading: loading, refetch: revalidate } = useDataQuery<any[]>({
@@ -34,6 +36,11 @@ export default function EstoquePage() {
   const handleMovimentar = (produto: any) => {
     setSelectedProduto(produto)
     setMovimentacaoOpen(true)
+  }
+
+  const handleVerHistorico = (produto: any) => {
+    setSelectedProduto(produto)
+    setHistoricoOpen(true)
   }
 
   return (
@@ -116,14 +123,24 @@ export default function EstoquePage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Button 
-                           variant="outline" 
-                           size="sm" 
-                           className="group-hover:border-primary/50 transition-colors"
-                           onClick={() => handleMovimentar(produto)}
-                        >
-                           <Activity className="size-4 mr-2 text-primary" /> Movimentar
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                             variant="outline" 
+                             size="sm" 
+                             className="group-hover:border-primary/50 transition-colors"
+                             onClick={() => handleVerHistorico(produto)}
+                          >
+                             <Clock className="size-4 mr-2 text-muted-foreground" /> Histórico
+                          </Button>
+                          <Button 
+                             variant="outline" 
+                             size="sm" 
+                             className="group-hover:border-primary/50 transition-colors"
+                             onClick={() => handleMovimentar(produto)}
+                          >
+                             <Activity className="size-4 mr-2 text-primary" /> Movimentar
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -139,6 +156,12 @@ export default function EstoquePage() {
         onOpenChange={setMovimentacaoOpen}
         produto={selectedProduto}
         onSuccess={() => revalidate()}
+      />
+
+      <EstoqueHistoricoDialog
+        open={historicoOpen}
+        onOpenChange={setHistoricoOpen}
+        produto={selectedProduto}
       />
     </AppShell>
   )

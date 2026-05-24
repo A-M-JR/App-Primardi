@@ -86,7 +86,8 @@ export async function getKanbanData(requesterId?: number) {
       email: lead.email,
       telefone: lead.telefone,
       cep: lead.cep,
-      observacoes: lead.observacoes
+      observacoes: lead.observacoes,
+      clienteId: lead.clienteId
     };
 
     // Find the right column

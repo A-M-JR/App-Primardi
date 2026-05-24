@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils"
 
 interface NovoItem {
   id: string
+  produtoId?: number
   descricao: string
   quantidade: number | string
   unidade: string
@@ -269,6 +270,7 @@ function NovoOrcamentoContent() {
     
     setItens([...itens, {
       id: Math.random().toString(36).substr(2, 9),
+      produtoId: etq.id,
       descricao,
       quantidade: 1,
       unidade: etq.unidadePadrao || "UN",
@@ -339,6 +341,7 @@ function NovoOrcamentoContent() {
 
           return {
             ...it,
+            produtoId: it.produtoId || null,
             quantidade: qtyTotal,
             quantidadeCredito: qCredito,
             precoUnitario: price,

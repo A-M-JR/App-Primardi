@@ -600,7 +600,7 @@ export default function ClienteDetailPage({
                           </div>
                           <div className="flex flex-col items-end">
                             <span className="font-bold text-sm text-primary">{formatCurrency(orc.totalGeral)}</span>
-                            <StatusBadge statusObj={orc.statusObj} fallback={orc.status} />
+                            <StatusBadge statusObj={orc.status} fallback={orc.status?.nome || 'Pendente'} />
                           </div>
                         </div>
                       ))}
@@ -632,7 +632,7 @@ export default function ClienteDetailPage({
                           </div>
                           <div className="flex flex-col items-end">
                             <span className="font-bold text-sm">{formatCurrency(ped.totalGeral)}</span>
-                            <StatusBadge statusObj={ped.statusObj} fallback={ped.status} />
+                            <StatusBadge statusObj={ped.status} fallback={ped.status?.nome || 'Pendente'} />
                           </div>
                         </div>
                       ))}

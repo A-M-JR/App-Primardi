@@ -116,6 +116,7 @@ function NovoPedidoForm() {
             }
 
             const reqItens = orcamento.itens.map((i: any) => ({
+                produtoId: i.produtoId || null,
                 descricao: i.descricao,
                 quantidade: i.quantidade,
                 unidade: i.unidade,

@@ -82,7 +82,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
     if (nextStep) {
       setIsUpdatingStatus(true)
       try {
-        const updated = await updateOrcamentoStatus(orcamento.id, nextStep)
+        const updated = await updateOrcamentoStatus(orcamento.id, nextStep, currentUser?.id)
         if (updated) {
           setOrcamento(updated)
           setStatus(updated.status)
@@ -91,9 +91,9 @@ function OrcamentoDetailContent({ id }: { id: string }) {
         toast.success("Status Atualizado!", {
           description: `O orçamento avançou para: ${steps[currentStepIndex + 1].label}`
         })
-      } catch (err) {
+      } catch (err: any) {
         console.error(err)
-        toast.error("Erro ao avançar status.")
+        toast.error(err.message || "Erro ao avançar status.")
       } finally {
         setIsUpdatingStatus(false)
       }
@@ -105,7 +105,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
     if (prevStep) {
       setIsUpdatingStatus(true)
       try {
-        const updated = await updateOrcamentoStatus(orcamento.id, prevStep)
+        const updated = await updateOrcamentoStatus(orcamento.id, prevStep, currentUser?.id)
         if (updated) {
           setOrcamento(updated)
           setStatus(updated.status)
@@ -114,9 +114,9 @@ function OrcamentoDetailContent({ id }: { id: string }) {
         toast.success("Status Revertido!", {
           description: `O orçamento voltou para: ${steps[currentStepIndex - 1].label}`
         })
-      } catch (err) {
+      } catch (err: any) {
         console.error(err)
-        toast.error("Erro ao reverter status.")
+        toast.error(err.message || "Erro ao reverter status.")
       } finally {
         setIsUpdatingStatus(false)
       }
@@ -126,7 +126,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
   const handleRejectStatus = async () => {
     setIsUpdatingStatus(true)
     try {
-      const updated = await updateOrcamentoStatus(orcamento.id, 'recusado')
+      const updated = await updateOrcamentoStatus(orcamento.id, 'recusado', currentUser?.id)
       if (updated) {
         setOrcamento(updated)
         setStatus(updated.status)
@@ -172,7 +172,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
       setTodosOrcamentos(orcs?.data || [])
       setLoading(false)
     })
-  }, [id])
+  }, [id, currentUser])
 
   if (loading) {
     return <div className="flex justify-center py-20 animate-pulse text-muted-foreground">Carregando orçamento...</div>

@@ -48,12 +48,12 @@ export default function PedidoDetailPage({
   useEffect(() => {
     if (!currentUser) return
     
-    getPedidoById(Number(id), currentUser?.id).then(data => {
+    getPedidoById(Number(id), currentUser.id).then(data => {
       setPedido(data)
       if (data) setCurrentStatus(data.status as Pedido['status'])
       setLoading(false)
     })
-  }, [id])
+  }, [id, currentUser])
 
   if (loading) {
     return (
@@ -116,15 +116,19 @@ export default function PedidoDetailPage({
       setIsUpdatingStatus(true)
       try {
         const updated = await updatePedidoStatus(pedido.id, nextStep)
+        if (updated?.error) {
+          toast.error(updated.error)
+          return
+        }
         setPedido(updated)
         setCurrentStatus(nextStep as Pedido['status']);
         router.refresh()
         toast.success("Status Atualizado!", {
           description: `O pedido agora está na fase: ${steps[currentStepIndex + 1].label}`
         })
-      } catch (err) {
+      } catch (err: any) {
         console.error(err)
-        toast.error("Erro ao atualizar o status.")
+        toast.error(err.message || "Erro ao atualizar o status.")
       } finally {
         setIsUpdatingStatus(false)
       }
@@ -137,15 +141,19 @@ export default function PedidoDetailPage({
       setIsUpdatingStatus(true)
       try {
         const updated = await updatePedidoStatus(pedido.id, prevStep)
+        if (updated?.error) {
+          toast.error(updated.error)
+          return
+        }
         setPedido(updated)
         setCurrentStatus(prevStep as Pedido['status']);
         router.refresh()
         toast.success("Status Revertido!", {
           description: `O pedido voltou para a fase: ${steps[currentStepIndex - 1].label}`
         })
-      } catch (err) {
+      } catch (err: any) {
         console.error(err)
-        toast.error("Erro ao reverter o status.")
+        toast.error(err.message || "Erro ao reverter o status.")
       } finally {
         setIsUpdatingStatus(false)
       }

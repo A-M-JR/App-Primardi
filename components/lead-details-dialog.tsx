@@ -19,6 +19,7 @@ type Lead = {
   telefone?: string;
   cep?: string;
   observacoes?: string;
+  clienteId?: number | null;
 }
 
 export function LeadDetailsDialog({ 
@@ -107,7 +108,29 @@ export function LeadDetailsDialog({
           </div>
         </DialogHeader>
 
-        {matchedClient && (
+        {lead.clienteId ? (
+          <div className="py-8 flex flex-col items-center justify-center gap-4 text-center">
+            <div className="size-16 rounded-full bg-indigo-500/10 flex items-center justify-center">
+              <CheckCircle2 className="size-8 text-indigo-500" />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-indigo-700 dark:text-indigo-400">Lead Convertido</h3>
+              <p className="text-sm text-muted-foreground mt-1">Este lead já foi transformado em um cliente oficial na base.</p>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row justify-center gap-3 w-full mt-4">
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
+                Fechar
+              </Button>
+              <Button asChild className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+                <Link href={`/clientes/${lead.clienteId}`}>
+                  Acessar Cadastro <ArrowRight className="size-4 ml-2" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {matchedClient && (
           <Alert className="mt-4 bg-primary/5 border-primary/20 text-primary flex flex-col gap-3">
             <div className="flex gap-2">
               <AlertCircle className="size-4 mt-0.5" />
@@ -195,6 +218,8 @@ export function LeadDetailsDialog({
             </Link>
           </Button>
         </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   )

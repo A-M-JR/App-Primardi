@@ -213,9 +213,39 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
   const newStatus = await prisma.status.findUnique({ where: { id: statusId } })
   const newStatusStr = mapStatusIdToStr(newStatus?.nome || '')
 
-  const progressiveStates = ['em_producao', 'separacao', 'entregue']
-  const wasProgressive = progressiveStates.includes(oldStatusStr)
-  const isProgressive = progressiveStates.includes(newStatusStr)
+  const stockDeductedStates = ['separacao', 'entregue']
+  const wasDeducted = stockDeductedStates.includes(oldStatusStr)
+  const isDeducted = stockDeductedStates.includes(newStatusStr)
+
+  // Verificação de estoque ANTES de avançar
+  if (!wasDeducted && isDeducted && oldPedido) {
+    const semEstoque = []
+    for (const item of oldPedido.itens) {
+      if (item.produtoId) {
+        const prod = await prisma.produto.findUnique({ where: { id: item.produtoId } })
+        if (prod && prod.estoque < item.quantidade) {
+          semEstoque.push(`"${item.descricao}" (Nec: ${item.quantidade}, Disp: ${prod.estoque})`)
+          // Deixa o alerta no item do pedido
+          await prisma.itemPedido.update({
+            where: { id: item.id },
+            data: { observacao: `⚠️ ALERTA: Estoque insuficiente na separação (Disp: ${prod.estoque}, Nec: ${item.quantidade}). ${item.observacao || ''}` }
+          })
+        } else if (prod) {
+            // Limpa o alerta se agora tem estoque (opcional, mas bom pra UX)
+            if (item.observacao?.includes('⚠️ ALERTA: Estoque insuficiente')) {
+                const novaObs = item.observacao.split('⚠️ ALERTA: Estoque insuficiente')[0].trim()
+                await prisma.itemPedido.update({
+                    where: { id: item.id },
+                    data: { observacao: novaObs }
+                })
+            }
+        }
+      }
+    }
+    if (semEstoque.length > 0) {
+      return { error: `Estoque insuficiente para avançar:\n${semEstoque.join('\n')}\n\nAlertas foram adicionados aos itens.` } as any
+    }
+  }
 
   const updated = await prisma.pedido.update({
     where: { id },
@@ -232,7 +262,7 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
   })
 
   // Logica de Baixa/Estorno de Estoque
-  if (!wasProgressive && isProgressive) {
+  if (!wasDeducted && isDeducted) {
     // Baixar estoque
     const { addMovimentacaoEstoque } = await import('./estoque')
     for (const item of updated.itens) {
@@ -241,12 +271,12 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
           produtoId: item.produtoId,
           tipo: 'SAIDA',
           quantidade: item.quantidade,
-          descricao: `estoque baixado no pedido ${updated.numero}`,
+          descricao: `baixa de ${item.quantidade} itens para ped ${updated.numero}`,
           pedidoId: updated.id
         }).catch(e => console.error("Erro ao dar baixa no estoque:", e))
       }
     }
-  } else if (wasProgressive && !isProgressive) {
+  } else if (wasDeducted && !isDeducted) {
     // Retornar estoque
     const { addMovimentacaoEstoque } = await import('./estoque')
     for (const item of updated.itens) {
@@ -255,7 +285,7 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
           produtoId: item.produtoId,
           tipo: 'ENTRADA',
           quantidade: item.quantidade,
-          descricao: `estorno de estoque do pedido ${updated.numero} (status retornado)`,
+          descricao: `estorno de ${item.quantidade} itens do ped ${updated.numero}`,
           pedidoId: updated.id
         }).catch(e => console.error("Erro ao estornar estoque:", e))
       }
