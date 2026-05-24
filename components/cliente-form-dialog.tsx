@@ -56,7 +56,7 @@ export function ClienteFormDialog({ open, onOpenChange }: ClienteFormDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground">
+      <DialogContent className="w-[95vw] sm:w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card text-card-foreground">
         <DialogHeader>
           <DialogTitle className="text-foreground">Novo Cliente</DialogTitle>
           <DialogDescription>

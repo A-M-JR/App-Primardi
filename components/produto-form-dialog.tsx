@@ -125,7 +125,7 @@ export function ProdutoFormDialog({ open, onOpenChange, produtoToEdit, onSuccess
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 border-0 shadow-2xl overflow-hidden bg-background">
+      <DialogContent className="w-[95vw] sm:w-full max-w-2xl p-0 border-0 shadow-2xl overflow-hidden bg-background">
         
         <div className="relative h-20 bg-gradient-to-r from-primary/90 to-primary p-6 flex flex-col justify-center overflow-hidden">
           <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none">

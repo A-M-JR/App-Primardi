@@ -146,7 +146,7 @@ function DashboardContent() {
                     return (
                       <TableRow key={ped.id} className="group hover:bg-muted/30 transition-colors">
                         <TableCell className="font-medium font-mono text-xs text-muted-foreground group-hover:text-foreground transition-colors">{ped.numero}</TableCell>
-                        <TableCell className="text-foreground max-w-[200px] truncate font-medium">{cliente?.razaoSocial || "-"}</TableCell>
+                        <TableCell className="text-foreground max-w-[120px] sm:max-w-[200px] truncate font-medium">{cliente?.razaoSocial || "-"}</TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground text-sm">{ped.vendedor?.nome || '-'}</TableCell>
                         <TableCell className="hidden lg:table-cell">
                           <span className="flex items-center gap-1.5 text-sm text-muted-foreground">

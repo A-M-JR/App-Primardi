@@ -168,7 +168,7 @@ export default function ClientesPage() {
                     const numPedidos = cliente._count?.pedidos || 0
                     return (
                       <TableRow key={cliente.id} className="group hover:bg-muted/30 transition-colors">
-                        <TableCell className="font-medium text-foreground max-w-[200px] truncate">{cliente.razaoSocial}</TableCell>
+                        <TableCell className="font-medium text-foreground max-w-[150px] sm:max-w-[200px] lg:max-w-none truncate">{cliente.razaoSocial}</TableCell>
                         <TableCell className="hidden md:table-cell text-muted-foreground font-mono text-xs">{cliente.cnpj}</TableCell>
                         <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">{cliente.cidade} / <span className="text-foreground">{cliente.estado}</span></TableCell>
                         <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">{cliente.telefone}</TableCell>
