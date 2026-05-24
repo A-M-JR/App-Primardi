@@ -11,6 +11,7 @@ import { ArrowLeft, Save, Building2, MapPin, Contact, FileText, Factory, UserCir
 import { formatCurrency } from "@/lib/mock-data"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { getClienteById, saveCliente } from "@/lib/actions/clientes"
+import { getTabelasPreco } from "@/lib/actions/tabelas-preco"
 import { addMovimentacaoCredito, getMovimentacoesByCliente } from "@/lib/actions/creditos"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -22,13 +23,20 @@ import { useRouter } from "next/navigation"
 
 // Helpers para Mascaras
 const maskCNPJ = (value: string) => {
-  return value
-    .replace(/\D/g, "")
-    .replace(/^(\d{2})(\d)/, "$1.$2")
-    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/\.(\d{3})(\d)/, ".$1/$2")
-    .replace(/(\d{4})(\d)/, "$1-$2")
-    .substring(0, 18)
+  const v = value.replace(/\D/g, "")
+  if (v.length <= 11) {
+    return v
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+  } else {
+    return v
+      .replace(/^(\d{2})(\d)/, "$1.$2")
+      .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/\.(\d{3})(\d)/, ".$1/$2")
+      .replace(/(\d{4})(\d)/, "$1-$2")
+      .substring(0, 18)
+  }
 }
 
 const maskPhone = (value: string) => {
@@ -73,14 +81,16 @@ export default function ClienteDetailPage({
     cep: "",
     logradouro: "",
     numeroEnd: "",
+    complemento: "",
     bairro: "",
-    cep: "",
-    numero: "",
     cidade: "",
     estado: "",
+    tabelaPrecoId: "none",
     observacoes: "",
     itensExclusivos: [] as { nome: string; preco: string | number; descricao?: string }[]
   })
+
+  const [tabelas, setTabelas] = useState<any[]>([])
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
@@ -109,16 +119,21 @@ export default function ClienteDetailPage({
           compradorNome: data.compradorNome || "",
           compradorTelefone: data.compradorTelefone || "",
           cep: data.cep || "",
-          logradouro: data.endereco || "",
-          numero: "",
+          logradouro: data.logradouro || "",
+          numeroEnd: data.numeroEnd || "",
+          complemento: data.complemento || "",
+          bairro: data.bairro || "",
           cidade: data.cidade || "",
           estado: data.estado || "",
+          tabelaPrecoId: data.tabelaPrecoId ? String(data.tabelaPrecoId) : "none",
           observacoes: data.observacoes || "",
           itensExclusivos: data.itensExclusivos || []
         })
       }
       setLoading(false)
     })
+
+    getTabelasPreco().then(res => setTabelas(res || []))
 
     // Carregar movimentações
     getMovimentacoesByCliente(Number(id)).then(setMovimentacoes)
@@ -199,8 +214,10 @@ export default function ClienteDetailPage({
           ...prev,
           razaoSocial: data.razao_social || data.nome_fantasia || prev.razaoSocial,
           cep: data.cep ? maskCEP(data.cep.toString()) : prev.cep,
-          logradouro: data.logradouro || prev.endereco,
-          numero: data.numero || prev.numero,
+          logradouro: data.logradouro || prev.logradouro,
+          numeroEnd: data.numero || prev.numeroEnd,
+          bairro: data.bairro || prev.bairro,
+          complemento: data.complemento || prev.complemento,
           cidade: data.municipio || prev.cidade,
           estado: data.uf || prev.estado,
           telefone: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1.toString()) : prev.telefone,
@@ -230,7 +247,9 @@ export default function ClienteDetailPage({
       if (!data.erro) {
         setFormData(prev => ({
           ...prev,
-          logradouro: data.logradouro ? `${data.logradouro}${data.bairro ? ` - ${data.bairro}` : ""}` : prev.endereco,
+          logradouro: data.logradouro || prev.logradouro,
+          bairro: data.bairro || prev.bairro,
+          complemento: data.complemento || prev.complemento,
           cidade: data.localidade || prev.cidade,
           estado: data.uf || prev.estado,
         }))
@@ -275,7 +294,7 @@ export default function ClienteDetailPage({
     const newErrors: Record<string, string> = {}
 
     if (!formData.razaoSocial) newErrors.razaoSocial = "Razão Social é obrigatória"
-    if (!formData.cnpj) newErrors.cnpj = "CNPJ é obrigatório"
+    if (!formData.cnpj) newErrors.cnpj = "CNPJ / CPF é obrigatório"
     if (!formData.telefone) newErrors.telefone = "Telefone é obrigatório"
     if (!formData.cidade) newErrors.cidade = "Cidade é obrigatória"
     if (!formData.estado) newErrors.estado = "UF é obrigatório"
@@ -288,7 +307,14 @@ export default function ClienteDetailPage({
 
     setIsSaving(true)
     try {
-      await saveCliente({ id: Number(id), ...formData })
+      const dataToSave = { ...formData, id: Number(id) }
+      if (dataToSave.tabelaPrecoId === "none" || !dataToSave.tabelaPrecoId) {
+          (dataToSave as any).tabelaPrecoId = null
+      } else {
+          (dataToSave as any).tabelaPrecoId = Number(dataToSave.tabelaPrecoId)
+      }
+
+      await saveCliente(dataToSave)
       toast.success("Cliente atualizado com sucesso!", {
         description: `Os dados de ${formData.razaoSocial} foram salvos.`
       })
@@ -377,7 +403,7 @@ export default function ClienteDetailPage({
                         <Input id="nomeFantasia" name="nomeFantasia" value={formData.nomeFantasia} onChange={handleChange} className="bg-muted/30" />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="cnpj">CNPJ *</Label>
+                        <Label htmlFor="cnpj">CNPJ / CPF *</Label>
                         <Input id="cnpj" name="cnpj" value={formData.cnpj} onChange={handleChange} maxLength={18} className="bg-muted/30" />
                       </div>
                       <div className="space-y-2">
@@ -401,12 +427,20 @@ export default function ClienteDetailPage({
                         <Input id="cep" name="cep" value={formData.cep} onChange={handleChange} maxLength={9} className="bg-muted/30" />
                       </div>
                       <div className="sm:col-span-8 space-y-2">
-                        <Label htmlFor="endereco">Logradouro</Label>
-                        <Input id="endereco" name="endereco" value={formData.logradouro} onChange={handleChange} className="bg-muted/30" />
+                        <Label htmlFor="logradouro">Logradouro</Label>
+                        <Input id="logradouro" name="logradouro" value={formData.logradouro} onChange={handleChange} className="bg-muted/30" />
                       </div>
-                      <div className="sm:col-span-3 space-y-2">
-                        <Label htmlFor="numero">Núm</Label>
-                        <Input id="numero" name="numero" value={formData.numero} onChange={handleChange} className="bg-muted/30" />
+                      <div className="sm:col-span-2 space-y-2">
+                        <Label htmlFor="numeroEnd">Núm</Label>
+                        <Input id="numeroEnd" name="numeroEnd" value={formData.numeroEnd} onChange={handleChange} className="bg-muted/30" />
+                      </div>
+                      <div className="sm:col-span-5 space-y-2">
+                        <Label htmlFor="complemento">Complemento</Label>
+                        <Input id="complemento" name="complemento" value={formData.complemento} onChange={handleChange} className="bg-muted/30" placeholder="Sala 1, Galpão A..." />
+                      </div>
+                      <div className="sm:col-span-5 space-y-2">
+                        <Label htmlFor="bairro">Bairro</Label>
+                        <Input id="bairro" name="bairro" value={formData.bairro} onChange={handleChange} className="bg-muted/30" />
                       </div>
                       <div className="sm:col-span-6 space-y-2">
                         <Label>Cidade</Label>
@@ -513,11 +547,31 @@ export default function ClienteDetailPage({
                     </CardContent>
                   </Card>
 
-                  {/* Obs */}
+                  {/* Info Add */}
                   <Card className="shadow-sm border-border/50">
-                    <CardHeader className="pb-4 font-medium">Observações</CardHeader>
-                    <CardContent>
-                      <Textarea name="observacoes" value={formData.observacoes} onChange={handleChange} className="min-h-[100px] bg-muted/30 resize-none text-xs" />
+                    <CardHeader className="pb-4 font-medium">Informações Adicionais</CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Tabela de Preços Vinculada</Label>
+                        <Select 
+                          value={formData.tabelaPrecoId} 
+                          onValueChange={(val) => setFormData(prev => ({ ...prev, tabelaPrecoId: val }))}
+                        >
+                          <SelectTrigger className="bg-muted/30 h-10">
+                            <SelectValue placeholder="Selecione uma tabela (opcional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Nenhuma / Preço Base</SelectItem>
+                            {tabelas.map(t => (
+                              <SelectItem key={t.id} value={t.id.toString()}>{t.nome}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Observações</Label>
+                        <Textarea name="observacoes" value={formData.observacoes} onChange={handleChange} className="min-h-[100px] bg-muted/30 resize-none text-xs" />
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
@@ -617,7 +671,7 @@ export default function ClienteDetailPage({
                   <CardContent className="pt-8 pb-8 text-center">
                     <div className="text-sm font-bold text-blue-600 uppercase tracking-widest mb-2">Saldo em Unidades</div>
                     <div className="text-5xl font-black text-blue-700">
-                      {(clienteOrig.saldoCreditoEtiquetas || 0).toLocaleString()} <span className="text-xl font-medium">un</span>
+                      {(clienteOrig.saldoCreditoProdutos || 0).toLocaleString()} <span className="text-xl font-medium">un</span>
                     </div>
                   </CardContent>
                 </Card>

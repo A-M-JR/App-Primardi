@@ -242,25 +242,40 @@ function NovoOrcamentoContent() {
     if (!etq) return
 
     // Buscar preço específico para o cliente se houver
-    let precoSugerido = etq.preco || ""
-    if (clienteId && etq.clientesVinculados) {
-      const vinculo = etq.clientesVinculados.find((v: any) => v.id === Number(clienteId))
-      if (vinculo && vinculo.preco !== null && vinculo.preco !== undefined) {
-        precoSugerido = vinculo.preco
-        toast.info(`Preço especial aplicado para este cliente: R$ ${Number(precoSugerido).toFixed(4)}`)
+    let precoSugerido = etq.precoBase || 0
+    
+    if (clienteSelecionado) {
+      // 1. Tentar da Tabela de Preços do Cliente
+      if (clienteSelecionado.tabelaPrecoId && etq.tabelasPreco) {
+        const itemTabela = etq.tabelasPreco.find((tp: any) => tp.tabelaPrecoId === clienteSelecionado.tabelaPrecoId)
+        if (itemTabela && itemTabela.preco !== undefined && itemTabela.preco !== null) {
+           precoSugerido = itemTabela.preco
+           toast.info(`Preço da Tabela Especial aplicado: R$ ${Number(precoSugerido).toFixed(4)}`)
+        }
+      } 
+      // 2. Tentar do Vínculo Exclusivo (legado)
+      else if (etq.clientesVinculados) {
+        const vinculo = etq.clientesVinculados.find((v: any) => v.id === Number(clienteId))
+        if (vinculo && vinculo.preco !== null && vinculo.preco !== undefined) {
+          precoSugerido = vinculo.preco
+          toast.info(`Preço especial aplicado para este cliente: R$ ${Number(precoSugerido).toFixed(4)}`)
+        }
       }
     }
 
-    const descricao = `${etq.nome} \nRef: ${etq.codigo} | Medida: ${etq.largura}x${etq.altura}mm | Mat: ${etq.material} | Cores: ${etq.numeroCores} | Tubete: ${etq.tipoTubete}`
+    const eanStr = etq.ean ? ` | EAN: ${etq.ean}` : ""
+    const descStr = etq.descricao ? `\n${etq.descricao}` : ""
+    const descricao = `${etq.nome} \nRef: ${etq.codigo}${eanStr}${descStr}`.trim()
+    
     setItens([...itens, {
       id: Math.random().toString(36).substr(2, 9),
       descricao,
       quantidade: 1,
-      unidade: "unid",
+      unidade: etq.unidadePadrao || "UN",
       precoUnitario: precoSugerido,
       observacao: ""
     }])
-    toast.success("Produto adicionada ao orçamento!")
+    toast.success("Produto adicionado ao orçamento!")
     setOpenCatalogo(false)
   }
 
@@ -311,6 +326,7 @@ function NovoOrcamentoContent() {
         observacoes,
         ocCliente,
         formaPagamentoId: formaPagamentoId ? Number(formaPagamentoId) : null,
+        tabelaPrecoId: clienteSelecionado?.tabelaPrecoId || null,
         totalGeral,
         descontoCredito,
         prazoEntrega,
@@ -363,6 +379,20 @@ function NovoOrcamentoContent() {
           </p>
         </div>
       </div>
+
+      {!loading && clientes.length === 0 && (
+        <div className="bg-destructive/10 text-destructive border-l-4 border-destructive p-4 rounded-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in zoom-in">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 shrink-0" />
+            <p className="text-sm font-medium">Você precisa ter pelo menos 1 cliente cadastrado para gerar um orçamento.</p>
+          </div>
+          <Link href="/clientes/novo">
+            <Button variant="destructive" size="sm" className="whitespace-nowrap shadow-sm h-8">
+              Cadastrar Cliente
+            </Button>
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Dados do Cliente (6 Colunas) */}

@@ -227,17 +227,24 @@ function OrcamentoDetailContent({ id }: { id: string }) {
         prazoEntrega,
         formaPagamentoId: formaPagamentoId ? Number(formaPagamentoId) : null,
         statusStr: status,
-        itens: itens.map(it => ({
-          produtoId: it.produtoId,
-          descricao: it.descricao,
-          unidade: it.unidade,
-          observacao: it.observacao || "",
-          quantidade: typeof it.quantidade === 'string' ? parseFloat(String(it.quantidade).replace(',', '.')) || 0 : it.quantidade,
-          precoUnitario: typeof it.precoUnitario === 'string' ? parseFloat(String(it.precoUnitario).replace(',', '.')) || 0 : it.precoUnitario,
-          total: (typeof it.quantidade === 'string' ? parseFloat(String(it.quantidade).replace(',', '.')) || 0 : it.quantidade) *
-            (typeof it.precoUnitario === 'string' ? parseFloat(String(it.precoUnitario).replace(',', '.')) || 0 : it.precoUnitario)
-        }))
-      })
+        itens: itens.map(it => {
+          const qty = typeof it.quantidade === 'string' ? parseFloat(String(it.quantidade).replace(',', '.')) || 0 : it.quantidade;
+          const price = typeof it.precoUnitario === 'string' ? parseFloat(String(it.precoUnitario).replace(',', '.')) || 0 : it.precoUnitario;
+          // Se o id for string (ex: 'temp-123') ou um id gerado localmente muito grande ou negativo, ignoramos.
+          // Mas como geramos os ids usando Math.random() agora para itens novos...
+          const isTempId = typeof it.id === 'string' || it.id < 0;
+          return {
+            id: isTempId ? undefined : it.id,
+            produtoId: it.produtoId,
+            descricao: it.descricao,
+            unidade: it.unidade,
+            observacao: it.observacao || "",
+            quantidade: qty,
+            precoUnitario: price,
+            total: qty * price
+          };
+        })
+      }, currentUser?.id)
 
       if (updatedOrcamento) {
         setOrcamento(updatedOrcamento)
@@ -272,7 +279,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
   }
 
   function adicionarItemVazio() {
-    const nextId = Math.max(0, ...itens.map(i => i.id)) + 1
+    const nextId = `temp-${Math.random().toString(36).substr(2, 9)}`
     setItens([...itens, { id: nextId, descricao: "", quantidade: 1, unidade: "unid", precoUnitario: 0, observacao: "" }])
   }
 
@@ -291,7 +298,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
     }
 
     const descricao = `${etq.nome} \nRef: ${etq.codigo} | Medida: ${etq.largura}x${etq.altura}mm | Mat: ${etq.material} | Cores: ${etq.numeroCores} | Tubete: ${etq.tipoTubete}${etq.observacoesTecnicas ? `\nObs: ${etq.observacoesTecnicas}` : ''}`
-    const nextId = Math.max(0, ...itens.map(i => i.id)) + 1
+    const nextId = `temp-${Math.random().toString(36).substr(2, 9)}`
 
     setItens([...itens, {
       id: nextId,
@@ -307,7 +314,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
   }
 
   function adicionarRecompra(descricao: string, precoUnitario: number | string) {
-    const nextId = Math.max(0, ...itens.map(i => i.id)) + 1
+    const nextId = `temp-${Math.random().toString(36).substr(2, 9)}`
     const finalPreco = typeof precoUnitario === 'string' ? parseFloat(precoUnitario.replace(',', '.')) || 0 : precoUnitario
     setItens([...itens, {
       id: nextId,
@@ -321,7 +328,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
   }
 
   function adicionarItemExclusivo(item: any) {
-    const nextId = Math.max(0, ...itens.map(i => i.id)) + 1
+    const nextId = `temp-${Math.random().toString(36).substr(2, 9)}`
     setItens([...itens, {
       id: nextId,
       descricao: item.nome,
@@ -372,7 +379,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
             </p>
             <div className="flex items-center gap-1.5 mt-2">
               <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20 text-[10px] uppercase font-bold px-2 py-0">
-                Prazo: {prazoEntrega ? new Date(prazoEntrega).toLocaleDateString('pt-BR') : 'A definir'}
+                Prazo: {prazoEntrega ? prazoEntrega.split('-').reverse().join('/') : 'A definir'}
               </Badge>
             </div>
           </div>
@@ -629,7 +636,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
                               }
                             }
                             const desc = `${etq.nome} \nRef: ${etq.codigo} | Medida: ${etq.largura}x${etq.altura}mm | Mat: ${etq.material} | Cores: ${etq.numeroCores} | Tubete: ${etq.tipoTubete}${etq.observacoesTecnicas ? `\nObs: ${etq.observacoesTecnicas}` : ''}`
-                            const nextId = Math.max(0, ...itens.map(i => i.id)) + 1
+                            const nextId = `temp-${Math.random().toString(36).substr(2, 9)}`
                             setItens([...itens, {
                               id: nextId,
                               produtoId: etq.id,
@@ -973,7 +980,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
                 />
               ) : (
                 <div className="text-sm font-medium p-2 bg-blue-500/5 rounded border border-blue-500/10 text-blue-700 inline-flex items-center gap-2">
-                  {prazoEntrega ? new Date(prazoEntrega).toLocaleDateString('pt-BR') : "A definir"}
+                  {prazoEntrega ? prazoEntrega.split('-').reverse().join('/') : "A definir"}
                 </div>
               )}
             </div>

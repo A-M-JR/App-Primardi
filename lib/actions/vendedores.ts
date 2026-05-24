@@ -42,7 +42,7 @@ export async function getVendedores(params: {
       COUNT(*) FILTER (WHERE "ativo" = TRUE)::int as ativos,
       COUNT(*) FILTER (WHERE "ativo" = FALSE)::int as pausados,
       COUNT(*)::int as total_global
-    FROM "Vendedor"
+    FROM "crm_vendedores"
     WHERE ("nome" ILIKE ${searchPattern} OR "email" ILIKE ${searchPattern})
   `
   const stats = counts[0] || { total_filtrado: 0, ativos: 0, pausados: 0, total_global: 0 }

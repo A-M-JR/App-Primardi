@@ -12,16 +12,31 @@ import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { saveCliente } from "@/lib/actions/clientes"
+import { getTabelasPreco } from "@/lib/actions/tabelas-preco"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 
 // Utils simples para mascaras
 const maskCNPJ = (value: string) => {
-    return value
-        .replace(/\D/g, "")
-        .replace(/^(\d{2})(\d)/, "$1.$2")
-        .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-        .replace(/\.(\d{3})(\d)/, ".$1/$2")
-        .replace(/(\d{4})(\d)/, "$1-$2")
-        .substring(0, 18)
+    const v = value.replace(/\D/g, "")
+    if (v.length <= 11) {
+        return v
+            .replace(/(\d{3})(\d)/, "$1.$2")
+            .replace(/(\d{3})(\d)/, "$1.$2")
+            .replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+    } else {
+        return v
+            .replace(/^(\d{2})(\d)/, "$1.$2")
+            .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+            .replace(/\.(\d{3})(\d)/, ".$1/$2")
+            .replace(/(\d{4})(\d)/, "$1-$2")
+            .substring(0, 18)
+    }
 }
 
 const maskPhone = (value: string) => {
@@ -67,15 +82,21 @@ function NovoClienteContent() {
         compradorTelefone: "",
         cep: "",
         logradouro: "",
-    numeroEnd: "",
-    bairro: "",
-    cep: "",
-        numero: "",
+        numeroEnd: "",
+        complemento: "",
+        bairro: "",
         cidade: "",
         estado: "",
+        tabelaPrecoId: "",
         observacoes: "",
         itensExclusivos: [] as { nome: string; preco: string; descricao?: string }[]
     })
+
+    const [tabelas, setTabelas] = useState<any[]>([])
+
+    useEffect(() => {
+        getTabelasPreco().then(res => setTabelas(res || []))
+    }, [])
 
     // 🤖 Automação via IA: Preenchimento proativo baseado na URL
     useEffect(() => {
@@ -99,8 +120,8 @@ function NovoClienteContent() {
                 email: aiEmail || prev.email,
                 telefone: aiTel ? maskPhone(aiTel) : prev.telefone,
                 cep: aiCep ? maskCEP(aiCep) : prev.cep,
-                logradouro: aiEnd || prev.endereco,
-                numero: aiNum || prev.numero,
+                logradouro: aiEnd || prev.logradouro,
+                numeroEnd: aiNum || prev.numeroEnd,
                 cidade: aiCid || prev.cidade,
                 estado: aiUf ? maskUF(aiUf) : prev.estado,
             }))
@@ -137,8 +158,10 @@ function NovoClienteContent() {
                 razaoSocial: data.razao_social || data.nome_fantasia || prev.razaoSocial,
                 nomeFantasia: data.nome_fantasia || prev.nomeFantasia,
                 cep: data.cep ? maskCEP(data.cep.toString()) : prev.cep,
-                logradouro: data.logradouro || prev.endereco,
-                numero: data.numero || prev.numero,
+                logradouro: data.logradouro || prev.logradouro,
+                numeroEnd: data.numero || prev.numeroEnd,
+                bairro: data.bairro || prev.bairro,
+                complemento: data.complemento || prev.complemento,
                 cidade: data.municipio || prev.cidade,
                 estado: data.uf || prev.estado,
                 telefone: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1.toString()) : prev.telefone,
@@ -175,7 +198,9 @@ function NovoClienteContent() {
             if (!data.erro) {
                 setFormData(prev => ({
                     ...prev,
-                    logradouro: data.logradouro ? `${data.logradouro}${data.bairro ? ` - ${data.bairro}` : ""}` : prev.endereco,
+                    logradouro: data.logradouro || prev.logradouro,
+                    bairro: data.bairro || prev.bairro,
+                    complemento: data.complemento || prev.complemento,
                     cidade: data.localidade || prev.cidade,
                     estado: data.uf || prev.estado,
                 }))
@@ -224,7 +249,7 @@ function NovoClienteContent() {
 
         // Validação mock
         if (!formData.razaoSocial) newErrors.razaoSocial = "Razão Social é obrigatória"
-        if (!formData.cnpj) newErrors.cnpj = "CNPJ é obrigatório"
+        if (!formData.cnpj) newErrors.cnpj = "CNPJ / CPF é obrigatório"
         if (!formData.telefone) newErrors.telefone = "Telefone é obrigatório"
         if (!formData.cidade) newErrors.cidade = "Cidade é obrigatória"
         if (!formData.estado) newErrors.estado = "UF é obrigatório"
@@ -237,7 +262,14 @@ function NovoClienteContent() {
 
         setIsSaving(true)
         try {
-            await saveCliente(formData)
+            const dataToSave = { ...formData }
+            if (dataToSave.tabelaPrecoId === "none" || !dataToSave.tabelaPrecoId) {
+                (dataToSave as any).tabelaPrecoId = null
+            } else {
+                (dataToSave as any).tabelaPrecoId = Number(dataToSave.tabelaPrecoId)
+            }
+
+            await saveCliente(dataToSave)
             toast.success("Cliente salvo com sucesso!", {
                 description: `O cliente ${formData.razaoSocial} foi adicionado à carteira.`
             })
@@ -324,12 +356,12 @@ function NovoClienteContent() {
                                         value={formData.nomeFantasia}
                                         onChange={handleChange}
                                         className="bg-muted/30 focus-visible:bg-background"
-                                        placeholder="Ex: Newflexo Etiquetas"
+                                        placeholder="Ex: Primardi Produtos"
                                     />
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="cnpj" className={errors.cnpj ? "text-destructive" : ""}>CNPJ *</Label>
+                                    <Label htmlFor="cnpj" className={errors.cnpj ? "text-destructive" : ""}>CNPJ / CPF *</Label>
                                     <Input
                                         id="cnpj"
                                         name="cnpj"
@@ -337,7 +369,7 @@ function NovoClienteContent() {
                                         onChange={handleChange}
                                         maxLength={18}
                                         className={`bg-muted/30 focus-visible:bg-background ${errors.cnpj ? "border-destructive focus-visible:ring-destructive" : ""}`}
-                                        placeholder="00.000.000/0000-00"
+                                        placeholder="000.000.000-00 ou 00.000.000/0000-00"
                                     />
                                     {errors.cnpj && <p className="text-xs text-destructive">{errors.cnpj}</p>}
                                 </div>
@@ -384,10 +416,10 @@ function NovoClienteContent() {
                                 </div>
 
                                 <div className="sm:col-span-8 space-y-2">
-                                    <Label htmlFor="endereco">Logradouro / Rua</Label>
+                                    <Label htmlFor="logradouro">Logradouro / Rua</Label>
                                     <Input
-                                        id="endereco"
-                                        name="endereco"
+                                        id="logradouro"
+                                        name="logradouro"
                                         value={formData.logradouro}
                                         onChange={handleChange}
                                         className="bg-muted/30 focus-visible:bg-background"
@@ -395,15 +427,39 @@ function NovoClienteContent() {
                                     />
                                 </div>
 
-                                <div className="sm:col-span-3 space-y-2">
-                                    <Label htmlFor="numero">Número</Label>
+                                <div className="sm:col-span-2 space-y-2">
+                                    <Label htmlFor="numeroEnd">Número</Label>
                                     <Input
-                                        id="numero"
-                                        name="numero"
-                                        value={formData.numero}
+                                        id="numeroEnd"
+                                        name="numeroEnd"
+                                        value={formData.numeroEnd}
                                         onChange={handleChange}
                                         className="bg-muted/30 focus-visible:bg-background"
                                         placeholder="S/N"
+                                    />
+                                </div>
+
+                                <div className="sm:col-span-5 space-y-2">
+                                    <Label htmlFor="complemento">Complemento</Label>
+                                    <Input
+                                        id="complemento"
+                                        name="complemento"
+                                        value={formData.complemento}
+                                        onChange={handleChange}
+                                        className="bg-muted/30 focus-visible:bg-background"
+                                        placeholder="Sala 1, Galpão A..."
+                                    />
+                                </div>
+
+                                <div className="sm:col-span-5 space-y-2">
+                                    <Label htmlFor="bairro">Bairro</Label>
+                                    <Input
+                                        id="bairro"
+                                        name="bairro"
+                                        value={formData.bairro}
+                                        onChange={handleChange}
+                                        className="bg-muted/30 focus-visible:bg-background"
+                                        placeholder="Centro"
                                     />
                                 </div>
 
@@ -592,7 +648,24 @@ function NovoClienteContent() {
                             <CardHeader className="pb-4">
                                 <CardTitle className="text-base">Informações Adicionais</CardTitle>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-2">
+                                    <Label>Tabela de Preços Vinculada</Label>
+                                    <Select 
+                                        value={formData.tabelaPrecoId} 
+                                        onValueChange={(val) => setFormData(prev => ({ ...prev, tabelaPrecoId: val }))}
+                                    >
+                                        <SelectTrigger className="bg-muted/30 h-10">
+                                            <SelectValue placeholder="Selecione uma tabela (opcional)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Nenhuma / Preço Base</SelectItem>
+                                            {tabelas.map(t => (
+                                                <SelectItem key={t.id} value={t.id.toString()}>{t.nome}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 <div className="space-y-2">
                                     <Label>Observações do Cliente</Label>
                                     <Textarea

@@ -72,19 +72,19 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-[100dvh] w-full flex flex-col items-center justify-center relative overflow-y-auto bg-zinc-950 p-6">
-            {/* Mesh Gradient Background (Blue/Indigo/Slate) */}
-            <div className="fixed inset-0 z-0 bg-gradient-to-br from-[#0f264a] via-[#1a365d] to-[#09090b]">
+            {/* Mesh Gradient Background (Green Brand) */}
+            <div className="fixed inset-0 z-0 bg-gradient-to-br from-brand-bg via-[#0a4b2a] to-zinc-950">
                 {/* Decorative floating orbs */}
-                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-[#3b82f6]/20 rounded-full blur-[120px] pointer-events-none"></div>
-                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#60a5fa]/10 rounded-full blur-[100px] pointer-events-none"></div>
+                <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-brand-accent/20 rounded-full blur-[120px] pointer-events-none"></div>
+                <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#00E676]/10 rounded-full blur-[100px] pointer-events-none"></div>
             </div>
 
             {/* Login Card Container Centralizado */}
             <div className={`w-full max-w-md relative z-10 animate-in fade-in zoom-in-95 duration-700 transition-transform ${shakeCard ? "animate-[shake_0.5s_ease-in-out]" : ""}`}>
-                {/* Logo da Newflexo acima do Card */}
+                {/* Logo da Primardi acima do Card */}
                 <div className="flex justify-center mb-8 drop-shadow-2xl px-4">
                     <img
-                        src="/logo_sem_fundo_branca.png"
+                        src="/logo_sem_fundo_primardi.png"
                         alt="Primardi"
                         className="w-full max-w-[280px] h-auto object-contain drop-shadow-[0_2px_15px_rgba(255,255,255,0.2)] transition-all hover:scale-105 duration-500"
                     />
@@ -93,7 +93,7 @@ export default function LoginPage() {
                 <div className="w-full">
                     <Card className={`border-white/10 shadow-2xl shadow-black/50 rounded-2xl overflow-hidden backdrop-blur-xl bg-white/95 dark:bg-zinc-900/95 transition-all ${loginError ? "shadow-red-900/20" : ""}`}>
                         {/* Top accent bar - muda de cor se tem erro */}
-                        <div className={`h-1 w-full bg-gradient-to-r transition-all duration-500 ${loginError === "user_blocked" ? "from-red-500 via-red-400 to-red-600" : loginError ? "from-amber-500 via-amber-400 to-amber-600" : "from-blue-500 via-primary to-blue-400"}`}></div>
+                        <div className={`h-1 w-full bg-gradient-to-r transition-all duration-500 ${loginError === "user_blocked" ? "from-red-500 via-red-400 to-red-600" : loginError ? "from-amber-500 via-amber-400 to-amber-600" : "from-brand-accent via-emerald-400 to-brand-bg"}`}></div>
 
                         <CardHeader className="space-y-2 pb-6 pt-8 px-8 text-center">
                             <CardTitle className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
@@ -188,14 +188,7 @@ export default function LoginPage() {
                             <p className="text-[11px] font-medium text-zinc-500 text-center tracking-wider uppercase">
                                 Primardi © {new Date().getFullYear()}
                             </p>
-                            <a
-                                href="https://bitwiseagency.com.br/"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[10px] font-medium text-zinc-400 hover:text-primary transition-colors"
-                            >
-                                Desenvolvido por <span className="font-bold">Bitwise Agency</span>
-                            </a>
+                            
                         </CardFooter>
                     </Card>
                 </div>

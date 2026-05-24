@@ -12,13 +12,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const now = new Date();
     await prisma.$executeRaw`
-      UPDATE "FormaPagamento" 
+      UPDATE "crm_formas_pagamento" 
       SET nome = ${data.nome}, ativo = ${data.ativo !== undefined ? data.ativo : true}, "quantidadeParcelas" = ${data.quantidadeParcelas !== undefined ? data.quantidadeParcelas : 1}, "updatedAt" = ${now}
       WHERE id = ${Number(id)}
     `
 
     const updated = await prisma.$queryRaw`
-      SELECT * FROM "FormaPagamento" WHERE id = ${Number(id)} LIMIT 1
+      SELECT * FROM "crm_formas_pagamento" WHERE id = ${Number(id)} LIMIT 1
     ` as any[]
 
     return NextResponse.json(updated[0])
@@ -45,7 +45,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
 
     await prisma.$executeRaw`
-      DELETE FROM "FormaPagamento" WHERE id = ${Number(id)}
+      DELETE FROM "crm_formas_pagamento" WHERE id = ${Number(id)}
     `
 
     return NextResponse.json({ success: true })

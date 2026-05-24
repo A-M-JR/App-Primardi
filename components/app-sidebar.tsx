@@ -15,6 +15,8 @@ import {
   CreditCard,
   LineChart,
   Truck,
+  Package,
+  Table2,
 } from "lucide-react"
 import {
   Sidebar,
@@ -31,7 +33,7 @@ import {
 import { useAuth } from "@/lib/auth-context"
 import { useAI } from "@/lib/ai-context"
 
-const menuItems = [
+const mainMenuItems = [
   {
     label: "Dashboard",
     href: "/",
@@ -53,6 +55,9 @@ const menuItems = [
     href: "/clientes",
     icon: Users,
   },
+]
+
+const produtoMenuItems = [
   {
     label: "Catálogo de Produtos",
     href: "/produtos",
@@ -68,6 +73,16 @@ const menuItems = [
     href: "/fornecedores",
     icon: Truck,
   },
+  {
+    label: "Estoque",
+    href: "/estoque",
+    icon: Package,
+  },
+  {
+    label: "Tabelas de Preço",
+    href: "/tabelas-preco",
+    icon: Table2,
+  },
 ]
 
 export function AppSidebar() {
@@ -81,9 +96,9 @@ export function AppSidebar() {
         <Link href="/" className="flex items-center gap-3 transition-transform hover:scale-[1.02] group/logo">
           <div className="relative flex h-16 w-full items-center justify-center">
             <img
-              src="/logo_sem_fundo_branca.png"
+              src="/logo_sem_fundo_primardi.png"
               alt="Primardi Logo"
-              className="absolute top-1/2 w-[140%] -translate-y-1/2 object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.1)] dark:drop-shadow-[0_2px_4px_rgba(255,255,255,0.1)]"
+              className="absolute top-1/2 w-[60%] max-w-[120px] -translate-y-1/2 object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.1)] dark:drop-shadow-[0_2px_4px_rgba(255,255,255,0.1)]"
             />
           </div>
         </Link>
@@ -93,7 +108,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => {
+              {mainMenuItems.map((item) => {
                 const isActive =
                   item.href === "/"
                     ? pathname === "/"
@@ -116,6 +131,40 @@ export function AppSidebar() {
                     >
                       <Link href={item.href} className="flex items-center gap-3">
                         <item.icon className="size-[18px]" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-2">
+          <SidebarGroupLabel className="text-[10px] font-bold tracking-[0.1em] uppercase text-sidebar-foreground/30 px-4 mt-2">
+            Gestão de Produtos
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="mt-1">
+            <SidebarMenu>
+              {produtoMenuItems.map((item) => {
+                const isActive = pathname.startsWith(item.href)
+                return (
+                  <SidebarMenuItem key={item.href} className="px-2">
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.label}
+                      className={`
+                        my-0.5 h-10 transition-all duration-200 
+                        ${isActive
+                          ? "bg-primary/10 text-primary font-bold hover:bg-primary/15 hover:text-primary shadow-sm"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }
+                      `}
+                    >
+                      <Link href={item.href} className="flex items-center gap-3">
+                        <item.icon className={`size-[18px] ${isActive ? "text-primary fill-primary/10" : ""}`} />
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -323,20 +372,7 @@ export function AppSidebar() {
               </button>
             </div>
 
-            <a
-              href="https://bitwiseagency.com.br/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group/agency flex flex-col items-center gap-1 opacity-90 hover:opacity-100 transition-all duration-300 py-2 mt-3"
-            >
-              <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-muted-foreground/80 flex items-center justify-center gap-1.5 w-full">
-                <Sparkles className="size-3 text-primary/70" />
-                Crafted by
-              </span>
-              <span className="text-[13px] font-black tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent group-hover/agency:from-primary group-hover/agency:to-primary/70 transition-all">
-                BITWISE<span className="font-light">AGENCY</span>
-              </span>
-            </a>
+            
           </div>
         </div>
       </SidebarFooter>

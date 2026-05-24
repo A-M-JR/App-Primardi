@@ -37,7 +37,7 @@ export async function getClientes(params: {
       COUNT(*) FILTER (WHERE ("ultimaCompra" < ${trintaDiasAtras} AND "ultimaCompra" >= ${sessentaDiasAtras}) OR ("ultimaCompra" IS NULL AND "criadoEm" < ${trintaDiasAtras} AND "criadoEm" >= ${sessentaDiasAtras}))::int as sem_compra_30,
       COUNT(*) FILTER (WHERE "ultimaCompra" < ${sessentaDiasAtras} OR ("ultimaCompra" IS NULL AND "criadoEm" < ${sessentaDiasAtras}))::int as sem_compra_60,
       COUNT(*) FILTER (WHERE ${filterSql})::int as total_filtrado
-    FROM "Cliente"
+    FROM "crm_clientes"
     WHERE ("razaoSocial" ILIKE ${searchPattern} OR "cnpj" ILIKE ${searchPattern} OR "cidade" ILIKE ${searchPattern})
   `
   
@@ -104,7 +104,7 @@ export async function getClientes(params: {
 export async function getClienteById(id: number) {
   // Busca via Raw SQL para garantir que pegamos os campos novos (nomeFantasia, etc)
   const results = await prisma.$queryRaw`
-    SELECT * FROM "Cliente" WHERE id = ${id}
+    SELECT * FROM "crm_clientes" WHERE id = ${id}
   ` as any[]
 
   if (results.length === 0) return null
@@ -125,7 +125,7 @@ export async function getClienteById(id: number) {
 
   // Falback para itens exclusivos via raw query devido a cache do Prisma
   const itensExclusivos = await prisma.$queryRaw`
-    SELECT * FROM "ItemExclusivoCliente" WHERE "clienteId" = ${id}
+    SELECT * FROM "crm_itens_exclusivos_clientes" WHERE "clienteId" = ${id}
   ` as any[]
 
   return {
@@ -140,12 +140,7 @@ export async function getClienteById(id: number) {
 }
 
 export async function saveCliente(data: any) {
-  const { id, numero, ...rest } = data
-  
-  let finalEndereco = rest.endereco || ""
-  if (numero && !finalEndereco.includes(numero)) {
-    finalEndereco = `${finalEndereco}, ${numero}`
-  }
+  const { id, ...rest } = data
 
   const prismaData: any = {
     razaoSocial: rest.razaoSocial,
@@ -156,7 +151,10 @@ export async function saveCliente(data: any) {
     telefone: rest.telefone || "",
     compradorNome: rest.compradorNome || null,
     compradorTelefone: rest.compradorTelefone || null,
-    endereco: finalEndereco,
+    logradouro: rest.logradouro || null,
+    numeroEnd: rest.numeroEnd || null,
+    complemento: rest.complemento || null,
+    bairro: rest.bairro || null,
     cep: rest.cep || "",
     cidade: rest.cidade || "",
     estado: rest.estado || "",
@@ -171,27 +169,27 @@ export async function saveCliente(data: any) {
       // Inserção manual do Cliente via raw SQL
       const now = new Date()
       await tx.$executeRaw`
-        INSERT INTO "Cliente" (
+        INSERT INTO "crm_clientes" (
           "razaoSocial", "nomeFantasia", cnpj, ie, email, telefone, 
-          "compradorNome", "compradorTelefone", endereco, cep, cidade, estado, 
-          observacoes, ativo, "saldoCreditoValor", "saldoCreditoEtiquetas", "criadoEm", "updatedAt"
+          "compradorNome", "compradorTelefone", logradouro, "numeroEnd", complemento, bairro, cep, cidade, estado, "empresaId", 
+          observacoes, ativo, "saldoCreditoValor", "saldoCreditoEtiquetas", "tabelaPrecoId", "criadoEm", "updatedAt"
         )
         VALUES (
           ${prismaData.razaoSocial}, ${prismaData.nomeFantasia}, ${prismaData.cnpj}, ${prismaData.ie}, 
           ${prismaData.email}, ${prismaData.telefone}, ${prismaData.compradorNome}, ${prismaData.compradorTelefone}, 
-          ${prismaData.endereco}, ${prismaData.cep}, ${prismaData.cidade}, ${prismaData.estado}, 
+          ${prismaData.logradouro}, ${prismaData.numeroEnd}, ${prismaData.complemento}, ${prismaData.bairro}, ${prismaData.cep}, ${prismaData.cidade}, ${prismaData.estado}, 1, 
           ${prismaData.observacoes}, ${prismaData.ativo}, 
-          ${rest.saldoCreditoValor || 0}, ${rest.saldoCreditoEtiquetas || 0}, ${now}, ${now}
+          ${rest.saldoCreditoValor || 0}, ${rest.saldoCreditoEtiquetas || 0}, ${rest.tabelaPrecoId ? Number(rest.tabelaPrecoId) : null}, ${now}, ${now}
         )
       `
       
       // Busca o ID gerado (Postgres)
-      const lastInsert = await tx.$queryRaw`SELECT id FROM "Cliente" ORDER BY id DESC LIMIT 1` as any[]
+      const lastInsert = await tx.$queryRaw`SELECT id FROM "crm_clientes" ORDER BY id DESC LIMIT 1` as any[]
       const newId = lastInsert[0].id
 
       for (const it of itensExclusivos) {
         await tx.$executeRaw`
-          INSERT INTO "ItemExclusivoCliente" ("clienteId", nome, descricao, preco)
+          INSERT INTO "crm_itens_exclusivos_clientes" ("clienteId", nome, descricao, preco)
           VALUES (${newId}, ${it.nome}, ${it.descricao || null}, ${Number(it.preco) || 0})
         `
       }
@@ -204,14 +202,14 @@ export async function saveCliente(data: any) {
       // Sincronização inteligente de itens exclusivos
       const itemIdsToKeep = itensExclusivos.map((it: any) => it.id).filter(Boolean).map(Number)
       if (itemIdsToKeep.length > 0) {
-        await tx.$executeRaw`DELETE FROM "ItemExclusivoCliente" WHERE "clienteId" = ${Number(id)} AND id NOT IN (${Prisma.join(itemIdsToKeep)})`
+        await tx.$executeRaw`DELETE FROM "crm_itens_exclusivos_clientes" WHERE "clienteId" = ${Number(id)} AND id NOT IN (${Prisma.join(itemIdsToKeep)})`
       } else {
-        await tx.$executeRaw`DELETE FROM "ItemExclusivoCliente" WHERE "clienteId" = ${Number(id)}`
+        await tx.$executeRaw`DELETE FROM "crm_itens_exclusivos_clientes" WHERE "clienteId" = ${Number(id)}`
       }
       
       const now = new Date()
       await tx.$executeRaw`
-        UPDATE "Cliente"
+        UPDATE "crm_clientes"
         SET 
           "razaoSocial" = ${prismaData.razaoSocial},
           "nomeFantasia" = ${prismaData.nomeFantasia},
@@ -221,7 +219,10 @@ export async function saveCliente(data: any) {
           "telefone" = ${prismaData.telefone},
           "compradorNome" = ${prismaData.compradorNome},
           "compradorTelefone" = ${prismaData.compradorTelefone},
-          "endereco" = ${prismaData.endereco},
+          "logradouro" = ${prismaData.logradouro},
+          "numeroEnd" = ${prismaData.numeroEnd},
+          "complemento" = ${prismaData.complemento},
+          "bairro" = ${prismaData.bairro},
           "cep" = ${prismaData.cep},
           "cidade" = ${prismaData.cidade},
           "estado" = ${prismaData.estado},
@@ -229,6 +230,7 @@ export async function saveCliente(data: any) {
           "ativo" = ${prismaData.ativo},
           "saldoCreditoValor" = ${rest.saldoCreditoValor !== undefined ? rest.saldoCreditoValor : 0},
           "saldoCreditoEtiquetas" = ${rest.saldoCreditoEtiquetas !== undefined ? rest.saldoCreditoEtiquetas : 0},
+          "tabelaPrecoId" = ${rest.tabelaPrecoId ? Number(rest.tabelaPrecoId) : null},
           "updatedAt" = ${now}
         WHERE id = ${Number(id)}
       `
@@ -236,13 +238,13 @@ export async function saveCliente(data: any) {
       for (const it of itensExclusivos) {
         if (it.id) {
           await tx.$executeRaw`
-            UPDATE "ItemExclusivoCliente" 
+            UPDATE "crm_itens_exclusivos_clientes" 
             SET nome = ${it.nome}, descricao = ${it.descricao || null}, preco = ${Number(it.preco) || 0}
             WHERE id = ${Number(it.id)}
           `
         } else {
           await tx.$executeRaw`
-            INSERT INTO "ItemExclusivoCliente" ("clienteId", nome, descricao, preco)
+            INSERT INTO "crm_itens_exclusivos_clientes" ("clienteId", nome, descricao, preco)
             VALUES (${Number(id)}, ${it.nome}, ${it.descricao || null}, ${Number(it.preco) || 0})
           `
         }

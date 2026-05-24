@@ -310,6 +310,7 @@ model TabelaPreco {
   empresa  Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   itens    TabelaPrecoItem[]
   clientes Cliente[]
+  orcamentos Orcamento[]
 
   @@unique([empresaId, nome])
   @@index([empresaId])
@@ -401,6 +402,7 @@ model Orcamento {
   vendedorId       Int
   statusId         Int
   formaPagamentoId Int?
+  tabelaPrecoId    Int?
   observacoes      String?
   totalGeral       Float
   descontoCredito  Float     @default(0)
@@ -417,6 +419,7 @@ model Orcamento {
   vendedor       Vendedor        @relation(fields: [vendedorId], references: [id])
   status         Status          @relation(fields: [statusId], references: [id])
   formaPagamento FormaPagamento? @relation(fields: [formaPagamentoId], references: [id])
+  tabelaPreco    TabelaPreco?    @relation(fields: [tabelaPrecoId], references: [id])
   itens          ItemOrcamento[]
   pedidos        Pedido[]
 

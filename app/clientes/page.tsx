@@ -151,7 +151,7 @@ export default function ClientesPage() {
                 <TableHeader className="bg-muted/50">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="font-semibold">Razão Social</TableHead>
-                    <TableHead className="hidden md:table-cell font-semibold">CNPJ</TableHead>
+                    <TableHead className="hidden md:table-cell font-semibold">CNPJ / CPF</TableHead>
                     <TableHead className="hidden lg:table-cell font-semibold">Cidade/UF</TableHead>
                     <TableHead className="hidden sm:table-cell font-semibold">Telefone</TableHead>
                     <TableHead className="text-center font-semibold">Histórico</TableHead>

@@ -10,7 +10,7 @@ export async function getComissoes(vendedorIdParam?: number, mes?: number, ano?:
   // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
   if (requesterId) {
     const perm = await getRequesterVendedorId(requesterId)
-    if (perm !== 'admin') {
+    if (perm !== 'ADMIN') {
       vendedorId = perm as number // Força o vendedorId dele
     }
   }
@@ -52,7 +52,7 @@ export async function getComissoes(vendedorIdParam?: number, mes?: number, ano?:
   let totalVendasBruto = 0
   
   pedidos.forEach(ped => {
-    const percentual = ped.vendedorId ?.comissao || 0
+    const percentual = ped.vendedor?.comissao || 0
     
     // Base de cálculo: Agora utiliza o valor final do pedido (já com descontos/créditos aplicados)
     const valorBaseComissao = Number(ped.totalGeral) || 0
@@ -83,8 +83,8 @@ export async function getComissoes(vendedorIdParam?: number, mes?: number, ano?:
         pedidoId: ped.id,
         numero: ped.numero,
         criadoEm: ped.criadoEm.toISOString(),
-        clienteNome: ped.clienteId ?.razaoSocial || "Desconhecido",
-        vendedorNome: ped.vendedorId ?.nome || "Sem Vendedor",
+        clienteNome: ped.cliente?.razaoSocial || "Desconhecido",
+        vendedorNome: ped.vendedor?.nome || "Sem Vendedor",
         vendedorId: ped.vendedorId,
         status: ped.status?.nome || "Desconhecido",
         totalPedido: valorBaseComissao, // Mostra o valor final com descontos

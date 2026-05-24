@@ -36,8 +36,6 @@ export function VendedorFormDialog({ vendedor, onSave, onClose }: VendedorFormDi
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
-    if (!formData.empresaId) formData.empresaId = 1;
-
     e.preventDefault()
     if (isSubmitting) return
 

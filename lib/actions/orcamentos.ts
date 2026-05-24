@@ -51,14 +51,14 @@ export async function getOrcamentos(params: {
       COUNT(*) FILTER (WHERE p."statusId" = 2)::int as aprovados,
       COUNT(*) FILTER (WHERE p."statusId" IN (1, 5))::int as parados,
       COALESCE(SUM(p."totalGeral") FILTER (WHERE p."statusId" <> 5), 0)::float as total_valor
-    FROM "Orcamento" p
-    LEFT JOIN "Cliente" c ON p."clienteId" = c.id
+    FROM "crm_orcamentos" p
+    LEFT JOIN "crm_clientes" c ON p."clienteId" = c.id
     WHERE (
       p."numero" ILIKE ${searchPattern} 
       OR c."razaoSocial" ILIKE ${searchPattern}
       OR EXISTS (
-        SELECT 1 FROM "ItemOrcamento" io
-        LEFT JOIN "Produto" e ON io."produtoId" = e.id
+        SELECT 1 FROM "crm_itens_orcamento" io
+        LEFT JOIN "crm_produtos" e ON io."produtoId" = e.id
         WHERE io."orcamentoId" = p.id 
           AND (io."descricao" ILIKE ${searchPattern} OR e."nome" ILIKE ${searchPattern} OR e."codigo" ILIKE ${searchPattern})
       )
@@ -249,16 +249,15 @@ export async function deleteOrcamento(id: number, requesterId?: number) {
   revalidatePath("/orcamentos")
 }
 
-export async function saveOrcamento(data: any, requesterId: number) {
-  const ctx = await getRequesterContext(requesterId);
-
+export async function saveOrcamento(data: any, requesterId?: number) {
   const { id, itens, ...rest } = data
   
   let forcedVendedorId = rest.vendedorId
+  let ctx: any = null;
 
   // SEGURANÇA: Vendedor só mexe no dele
   if (requesterId) {
-    const ctx = await getRequesterContext(requesterId)
+    ctx = await getRequesterContext(requesterId)
     if (!ctx.isAdmin) {
       if (id) {
         const orc = await prisma.orcamento.findUnique({ where: { id }, select: { vendedorId: true } })
@@ -318,7 +317,7 @@ export async function saveOrcamento(data: any, requesterId: number) {
   }
 
   const prismaData = {
-    empresaId: ctx.empresaId,
+    empresaId: ctx?.empresaId || 1,
     tipoFrete: rest.tipoFrete || "",
     valorFrete: Number(rest.valorFrete) || 0,
 
@@ -335,11 +334,11 @@ export async function saveOrcamento(data: any, requesterId: number) {
     ativo: true,
   }
 
+  const tabelaPrecoIdToSave = rest.tabelaPrecoId ? Number(rest.tabelaPrecoId) : null;
+
   if (!id) {
     const created = await prisma.$transaction(async (tx) => {
-      // Criação via ORM (pode falhar se o cache estiver muito ruim, mas vamos tentar primeiro com campos escalares)
-      // Se falhar o descontoCredito, o erro será capturado.
-      const orc = await (tx.orcamento as any).create({
+      const orc = await tx.orcamento.create({
         data: {
           ...prismaData,
           itens: {
@@ -370,14 +369,18 @@ export async function saveOrcamento(data: any, requesterId: number) {
         }
       })
 
-      // Lógica de Débito de Créditos (Valor)
+      if (tabelaPrecoIdToSave) {
+        await tx.$executeRaw`UPDATE "crm_orcamentos" SET "tabelaPrecoId" = ${tabelaPrecoIdToSave} WHERE id = ${orc.id}`
+      }
+
+      // Lógica de Débito de Créditos (Valor Monetário)
       if (prismaData.descontoCredito > 0) {
         await tx.$executeRaw`
-          INSERT INTO "MovimentacaoCredito" ("clienteId", tipo, operacao, quantidade, descricao, "orcamentoId", "criadoEm")
+          INSERT INTO "crm_movimentacoes_credito" ("clienteId", tipo, operacao, quantidade, descricao, "orcamentoId", "criadoEm")
           VALUES (${prismaData.clienteId}, 'VALOR', 'DEBITO', ${prismaData.descontoCredito}, ${`Desconto no Orçamento ${orc.numero}`}, ${orc.id}, ${new Date()})
         `
         await tx.$executeRaw`
-          UPDATE "Cliente" SET "saldoCreditoValor" = "saldoCreditoValor" - ${prismaData.descontoCredito} WHERE id = ${prismaData.clienteId}
+          UPDATE "crm_clientes" SET "saldoCreditoValor" = "saldoCreditoValor" - ${prismaData.descontoCredito} WHERE id = ${prismaData.clienteId}
         `
       }
 
@@ -385,11 +388,11 @@ export async function saveOrcamento(data: any, requesterId: number) {
       const produtosCredito = itens.reduce((sum: number, it: any) => sum + (Number(it.quantidadeCredito) || 0), 0)
       if (produtosCredito > 0) {
         await tx.$executeRaw`
-          INSERT INTO "MovimentacaoCredito" ("clienteId", tipo, operacao, quantidade, descricao, "orcamentoId", "criadoEm")
+          INSERT INTO "crm_movimentacoes_credito" ("clienteId", tipo, operacao, quantidade, descricao, "orcamentoId", "criadoEm")
           VALUES (${prismaData.clienteId}, 'ETIQUETA', 'DEBITO', ${produtosCredito}, ${`Uso de saldo de produtos no Orçamento ${orc.numero}`}, ${orc.id}, ${new Date()})
         `
         await tx.$executeRaw`
-          UPDATE "Cliente" SET "saldoCreditoProdutos" = "saldoCreditoProdutos" - ${produtosCredito} WHERE id = ${prismaData.clienteId}
+          UPDATE "crm_clientes" SET "saldoCreditoProdutos" = "saldoCreditoProdutos" - ${produtosCredito} WHERE id = ${prismaData.clienteId}
         `
       }
 
@@ -403,31 +406,35 @@ export async function saveOrcamento(data: any, requesterId: number) {
       atualizadoEm: created.atualizadoEm.toISOString(),
     }
   } else {
+    // Preparar os dados dos itens
+    const mapItemData = (it: any) => {
+      const qty = Number(typeof it.quantidade === 'string' ? it.quantidade.replace(',', '.') : it.quantidade) || 0;
+      const price = Number(typeof it.precoUnitario === 'string' ? it.precoUnitario.replace(',', '.') : it.precoUnitario) || 0;
+      return {
+        produtoId: it.produtoId ? Number(it.produtoId) : null,
+        descricao: it.descricao,
+        quantidade: qty,
+        quantidadeCredito: Number(it.quantidadeCredito) || 0,
+        unidade: it.unidade,
+        precoUnitario: price,
+        total: Number(it.total) || ((qty - (Number(it.quantidadeCredito) || 0)) * price),
+        observacao: it.observacao || ""
+      };
+    };
+
+    const validItemIds = itens.filter((i: any) => i.id).map((i: any) => Number(i.id));
+
     const updated = await prisma.orcamento.update({
       where: { id: Number(id) },
       data: {
         ...prismaData,
         itens: {
-          deleteMany: { id: { notIn: itens.filter((i: any) => i.id).map((i: any) => Number(i.id)) } },
-          upsert: itens.map((it: any) => {
-            const qty = Number(typeof it.quantidade === 'string' ? it.quantidade.replace(',', '.') : it.quantidade) || 0
-            const price = Number(typeof it.precoUnitario === 'string' ? it.precoUnitario.replace(',', '.') : it.precoUnitario) || 0
-            const itemData = {
-              produtoId: it.produtoId ? Number(it.produtoId) : null,
-              descricao: it.descricao,
-              quantidade: qty,
-              quantidadeCredito: Number(it.quantidadeCredito) || 0,
-              unidade: it.unidade,
-              precoUnitario: price,
-              total: Number(it.total) || ((qty - (Number(it.quantidadeCredito) || 0)) * price),
-              observacao: it.observacao || ""
-            }
-            return {
-              where: { id: it.id ? Number(it.id) : 0 },
-              create: itemData,
-              update: itemData
-            }
-          })
+          deleteMany: { id: { notIn: validItemIds } },
+          update: itens.filter((i: any) => i.id).map((it: any) => ({
+            where: { id: Number(it.id) },
+            data: mapItemData(it)
+          })),
+          create: itens.filter((i: any) => !i.id).map(mapItemData)
         }
       },
       include: {
@@ -440,6 +447,11 @@ export async function saveOrcamento(data: any, requesterId: number) {
         }
       }
     })
+    
+    if (tabelaPrecoIdToSave) {
+        await prisma.$executeRaw`UPDATE "crm_orcamentos" SET "tabelaPrecoId" = ${tabelaPrecoIdToSave} WHERE id = ${Number(id)}`
+    }
+    
     revalidatePath("/orcamentos")
     revalidatePath(`/orcamentos/${id}`)
     

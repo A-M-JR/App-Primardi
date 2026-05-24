@@ -26,6 +26,8 @@ import { PDFDownloadButton } from "@/components/pdf-download-button"
 import { PDFProductionOrderButton } from "@/components/pdf-production-order-button"
 import { toast } from "sonner"
 import type { Pedido, Cliente, Vendedor } from "@/lib/types"
+import { PedidoEditDialog } from "@/components/pedido-edit-dialog"
+import { updatePedidoDetails } from "@/lib/actions/pedidos"
 
 export default function PedidoDetailPage({
   params,
@@ -40,6 +42,8 @@ export default function PedidoDetailPage({
   const [loading, setLoading] = useState(true)
   const [currentStatus, setCurrentStatus] = useState<Pedido['status']>('em_analise')
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [evolutionText, setEvolutionText] = useState("")
+  const [isSavingEvolution, setIsSavingEvolution] = useState(false)
 
   useEffect(() => {
     if (!currentUser) return
@@ -148,9 +152,52 @@ export default function PedidoDetailPage({
     }
   }
 
+  const parsedEvolucoes = () => {
+    const text = pedido.observacoesGerais || ""
+    const parts = text.split('\n\n')
+    const inicial = parts[0]
+    const evols = []
+    
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i]
+      const match = part.match(/^\[(.*?) - (.*?)\]:\s*([\s\S]*)/)
+      if (match) {
+        evols.push({ date: match[1], author: match[2], text: match[3] })
+      } else {
+        evols.push({ date: "", author: "Sistema", text: part })
+      }
+    }
+    return { inicial, evols }
+  }
+
+  const { inicial: obsInicial, evols: evolucoes } = parsedEvolucoes()
+
+  const handleRegistrarEvolucao = async () => {
+    if (!evolutionText.trim()) return
+    setIsSavingEvolution(true)
+    try {
+      const timestamp = new Date().toLocaleString('pt-BR')
+      const newEntry = `\n\n[${timestamp} - ${currentUser?.nome || 'Usuário'}]: ${evolutionText}`
+      const updatedObs = (pedido.observacoesGerais || '') + newEntry
+      
+      const updated = await updatePedidoDetails(pedido.id, {
+        observacoesGerais: updatedObs
+      }, currentUser?.id || 0)
+      
+      setPedido(updated)
+      setEvolutionText("")
+      toast.success("Evolução registrada!")
+    } catch (err) {
+      console.error(err)
+      toast.error("Erro ao registrar evolução.")
+    } finally {
+      setIsSavingEvolution(false)
+    }
+  }
+
   return (
     <AppShell>
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 pb-20">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <Link href="/pedidos">
@@ -172,11 +219,7 @@ export default function PedidoDetailPage({
             </div>
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto">
-            <PDFProductionOrderButton
-              pedido={pedido}
-              cliente={cliente as Cliente}
-              vendedor={vendedor as Vendedor}
-            />
+
             <PDFDownloadButton
               pedido={pedido}
               cliente={cliente as Cliente}
@@ -185,16 +228,22 @@ export default function PedidoDetailPage({
           </div>
         </div>
 
-        <div className="bg-card rounded-xl border border-border/50 shadow-sm p-6 mt-2 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-transparent pointer-events-none" />
+        <div className="bg-card rounded-xl border border-border/50 shadow-md p-6 mt-2 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent pointer-events-none" />
           <div className="relative z-10">
-            <h3 className="text-sm font-semibold text-foreground mb-6 uppercase tracking-wider">Progresso da Produção</h3>
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Acompanhamento de Produção</h3>
+                <p className="text-xs text-muted-foreground mt-1">Status atualizado em tempo real pelas equipes operacionais</p>
+              </div>
+            </div>
 
-            <div className="relative flex justify-between">
-              {/* Connecting line */}
-              <div className="absolute top-5 left-[10%] right-[10%] h-[2px] bg-muted/50 -z-10" />
+            <div className="relative flex justify-between px-4 sm:px-10">
+              {/* Linha de fundo */}
+              <div className="absolute top-6 left-[10%] right-[10%] h-[3px] bg-muted/60 -z-10 rounded-full" />
+              {/* Linha de progresso animada */}
               <div
-                className="absolute top-5 left-[10%] h-[2px] bg-primary -z-10 transition-all duration-500 ease-in-out"
+                className="absolute top-6 left-[10%] h-[3px] bg-primary -z-10 transition-all duration-700 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)] rounded-full"
                 style={{ width: `${(currentStepIndex / (steps.length - 1)) * 80}%` }}
               />
 
@@ -204,49 +253,59 @@ export default function PedidoDetailPage({
                 const isCompleted = index < currentStepIndex
 
                 return (
-                  <div key={step.id} className="flex flex-col items-center gap-3 w-1/4">
-                    <div className={`
-                      size-10 rounded-full flex items-center justify-center border-2 bg-background transition-colors duration-300
-                      ${isCompleted ? 'border-primary text-primary' : ''}
-                      ${isActive ? 'border-primary ring-4 ring-primary/20 text-primary shadow-sm' : ''}
-                      ${!isCompleted && !isActive ? 'border-muted-foreground/30 text-muted-foreground/50' : ''}
-                    `}>
-                      {isCompleted ? <CheckCircle2 className="size-5" /> : <Icon className="size-5" />}
+                  <div key={step.id} className="flex flex-col items-center gap-4 w-1/4 group">
+                    <div className="relative">
+                      {isActive && (
+                        <div className="absolute -inset-2 bg-primary/20 rounded-full blur-md animate-pulse" />
+                      )}
+                      <div className={`
+                        relative z-10 size-12 rounded-full flex items-center justify-center border-[3px] bg-card transition-all duration-500 shadow-sm
+                        ${isCompleted ? 'border-primary bg-primary text-primary-foreground scale-105' : ''}
+                        ${isActive ? 'border-primary ring-4 ring-primary/30 text-primary scale-110 shadow-lg' : ''}
+                        ${!isCompleted && !isActive ? 'border-muted-foreground/30 text-muted-foreground/50' : ''}
+                      `}>
+                        {isCompleted ? <CheckCircle2 className="size-6" /> : <Icon className="size-5" />}
+                      </div>
                     </div>
-                    <span className={`text-xs font-semibold uppercase tracking-wider text-center
-                      ${isCompleted ? 'text-foreground' : ''}
-                      ${isActive ? 'text-primary' : ''}
-                      ${!isCompleted && !isActive ? 'text-muted-foreground' : ''}
-                    `}>
-                      {step.label}
-                    </span>
+                    
+                    <div className="flex flex-col items-center text-center space-y-1 h-20">
+                      <span className={`text-[13px] font-bold uppercase tracking-wider transition-colors
+                        ${isCompleted ? 'text-foreground' : ''}
+                        ${isActive ? 'text-primary' : ''}
+                        ${!isCompleted && !isActive ? 'text-muted-foreground' : ''}
+                      `}>
+                        {step.label}
+                      </span>
 
-                    {/* Botões de navegação apenas no step ativo */}
-                    {isActive && (
-                      <div className="mt-2 flex flex-col gap-2">
-                        {step.nextLabel && (
-                          <Button
-                            size="sm"
-                            onClick={handleAdvanceStatus}
-                            disabled={isUpdatingStatus}
-                            className="h-7 text-[10px] uppercase font-bold tracking-wider rounded-full px-4 shadow-md hover:scale-105 transition-transform"
-                          >
-                            {isUpdatingStatus ? "..." : step.nextLabel} <ArrowRight className="size-3 ml-1" />
-                          </Button>
-                        )}
-                        {step.prevLabel && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleBackStatus}
-                            disabled={isUpdatingStatus}
-                            className="h-7 text-[10px] uppercase font-bold tracking-wider rounded-full px-4 border-primary/30 text-primary hover:bg-primary/5"
-                          >
-                            <ArrowLeft className="size-3 mr-1" /> {isUpdatingStatus ? "..." : step.prevLabel}
-                          </Button>
+                      {/* Ações Rápidas apenas na etapa ativa */}
+                      <div className={`transition-all duration-300 ${isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+                        {isActive && (
+                          <div className="flex flex-col gap-1.5 mt-1">
+                            {step.nextLabel && (
+                              <Button
+                                size="sm"
+                                onClick={handleAdvanceStatus}
+                                disabled={isUpdatingStatus}
+                                className="h-7 text-[10px] uppercase font-bold tracking-wider rounded-full px-4 bg-primary text-primary-foreground shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all w-36"
+                              >
+                                {isUpdatingStatus ? "..." : step.nextLabel} <ArrowRight className="size-3 ml-1" />
+                              </Button>
+                            )}
+                            {step.prevLabel && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleBackStatus}
+                                disabled={isUpdatingStatus}
+                                className="h-6 text-[9px] uppercase tracking-wider rounded-full px-3 w-36 bg-background/50 backdrop-blur-sm"
+                              >
+                                <ArrowLeft className="size-3 mr-1" /> {step.prevLabel}
+                              </Button>
+                            )}
+                          </div>
                         )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 )
               })}
@@ -256,8 +315,9 @@ export default function PedidoDetailPage({
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2 border-border/50 shadow-sm">
-            <CardHeader className="bg-muted/10 border-b border-border/50 pb-4">
-              <CardTitle className="text-base">Informações de Entrega e Cliente</CardTitle>
+            <CardHeader className="bg-muted/10 border-b border-border/50 pb-4 flex flex-row items-center justify-between">
+              <CardTitle className="text-base mt-1">Informações de Entrega e Cliente</CardTitle>
+              <PedidoEditDialog pedido={pedido} currentUserId={currentUser?.id} onUpdated={(p) => setPedido(p)} />
             </CardHeader>
             <CardContent className="pt-6">
               {cliente && (
@@ -275,7 +335,7 @@ export default function PedidoDetailPage({
                       </div>
                       <div className="flex-1">
                         <h4 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Comprador</h4>
-                        <p className="text-sm font-medium">{pedido.comprador}</p>
+                        <p className="text-sm font-medium">{pedido.nomeComprador || 'Não informado'}</p>
                       </div>
                     </div>
                   </div>
@@ -308,9 +368,15 @@ export default function PedidoDetailPage({
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] uppercase text-amber-600 dark:text-amber-400 font-bold block mb-0.5">Tipo de Frete</span>
-                          <span className="text-sm font-bold text-foreground">{pedido.frete}</span>
+                          <span className="text-sm font-bold text-foreground">{pedido.tipoFrete || 'FOB'}</span>
                         </div>
                       </div>
+                      {(pedido.valorFrete > 0) && (
+                        <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800/50 flex justify-between items-center">
+                          <span className="text-[11px] uppercase text-amber-600 dark:text-amber-400 font-bold">Valor Adicional de Frete</span>
+                          <span className="text-sm font-black text-amber-700 dark:text-amber-500">{formatCurrency(pedido.valorFrete)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -327,51 +393,26 @@ export default function PedidoDetailPage({
                 <h4 className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">Forma de Pagamento</h4>
                 <div className="bg-background border border-border/60 rounded-lg p-3 text-sm font-medium shadow-sm flex items-center gap-2">
                   <CreditCard className="size-4 text-primary" />
-                  {pedido.formaPagamentoObj?.nome || pedido.formaPagamento}
+                  {pedido.formaPagamento?.nome || "A combinar"}
                 </div>
               </div>
               <Separator />
               <div>
                 <h4 className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">Vendedor Responsável</h4>
-                <div className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <div className="size-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
-                    {vendedor?.nome?.charAt(0) || "V"}
+                <div className="text-sm font-medium text-foreground flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="size-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">
+                      {vendedor?.nome?.charAt(0) || "V"}
+                    </div>
+                    {vendedor?.nome || "Vendedor não identificado"}
                   </div>
-                  {vendedor?.nome || "Vendedor não identificado"}
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Card className="border-border/50 shadow-sm">
-          <CardHeader className="bg-muted/10 border-b border-border/50 pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Settings className="size-4 text-primary" />
-              Especificações de Produção
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <div className="bg-muted/20 p-3 rounded-lg border border-border/40">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Sentido de Saída</p>
-                <p className="text-sm font-medium text-foreground">{pedido.sentidoSaidaRolo}</p>
-              </div>
-              <div className="bg-muted/20 p-3 rounded-lg border border-border/40">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Tipo de Tubete</p>
-                <p className="text-sm font-medium text-foreground">{pedido.tipoTubete}</p>
-              </div>
-              <div className="bg-muted/20 p-3 rounded-lg border border-border/40">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Gap entre Produtos</p>
-                <p className="text-sm font-medium text-foreground">{pedido.gapEntreProdutos}</p>
-              </div>
-              <div className="bg-muted/20 p-3 rounded-lg border border-border/40">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1 font-semibold">Número de Pistas</p>
-                <p className="text-sm font-medium text-foreground">{pedido.numeroPistas}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+
 
         <Card>
           <CardHeader>
@@ -412,12 +453,22 @@ export default function PedidoDetailPage({
                       </TableCell>
                     </TableRow>
                   ))}
+                  {(pedido.valorFrete > 0) && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-right font-medium text-muted-foreground">
+                        Frete ({pedido.tipoFrete})
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-muted-foreground">
+                        {formatCurrency(pedido.valorFrete)}
+                      </TableCell>
+                    </TableRow>
+                  )}
                   <TableRow>
                     <TableCell colSpan={4} className="text-right font-bold text-foreground">
                       Total R$
                     </TableCell>
                     <TableCell className="text-right font-bold text-lg text-primary">
-                      {formatCurrency(pedido.totalGeral)}
+                      {formatCurrency(pedido.totalGeral + (pedido.valorFrete || 0))}
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -491,18 +542,32 @@ export default function PedidoDetailPage({
                 </div>
 
                 {/* Initial observation if any */}
-                {pedido.observacoesGerais && (
+                {obsInicial && (
                   <div className="relative">
                     <div className="absolute -left-[31px] bg-amber-500 border-2 border-amber-500 size-4 rounded-full" />
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 shadow-sm">
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider bg-amber-500/20 px-2 py-1 rounded">Atenção Integrada</span>
-                        <span className="text-xs text-amber-600/70 font-mono">Na crianção</span>
+                        <span className="text-xs text-amber-600/70 font-mono">Na criação</span>
                       </div>
-                      <p className="text-sm text-amber-800 font-medium whitespace-pre-line">{pedido.observacoesGerais}</p>
+                      <p className="text-sm text-amber-800 font-medium whitespace-pre-line">{obsInicial}</p>
                     </div>
                   </div>
                 )}
+
+                {/* Evoluções dinâmicas */}
+                {evolucoes.map((evol, i) => (
+                  <div key={i} className="relative">
+                    <div className="absolute -left-[31px] bg-background border-2 border-muted-foreground/30 size-4 rounded-full" />
+                    <div className="bg-card border border-border/50 rounded-lg p-4 shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-[11px] font-bold text-foreground uppercase tracking-wider bg-muted px-2 py-1 rounded">{evol.author}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{evol.date}</span>
+                      </div>
+                      <p className="text-sm text-foreground/90 whitespace-pre-line">{evol.text}</p>
+                    </div>
+                  </div>
+                ))}
 
               </div>
 
@@ -512,13 +577,20 @@ export default function PedidoDetailPage({
                 </h4>
                 <div className="flex flex-col gap-3">
                   <Textarea
+                    value={evolutionText}
+                    onChange={e => setEvolutionText(e.target.value)}
                     placeholder="Adicione uma anotação, registre uma ocorrência ou detalhe a evolução da produção..."
                     className="resize-none bg-muted/10 focus-visible:ring-primary/50"
                     rows={3}
                   />
                   <div className="flex justify-end">
-                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                      <Plus className="size-4 mr-1" /> Registrar Evolução
+                    <Button 
+                      size="sm" 
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                      onClick={handleRegistrarEvolucao}
+                      disabled={isSavingEvolution || !evolutionText.trim()}
+                    >
+                      <Plus className="size-4 mr-1" /> {isSavingEvolution ? "Registrando..." : "Registrar Evolução"}
                     </Button>
                   </div>
                 </div>

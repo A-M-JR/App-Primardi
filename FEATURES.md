@@ -1,4 +1,4 @@
-# Newflexo - Funcionalidades Implementadas
+# Primardi - Funcionalidades Implementadas
 
 ## 📋 Visão Geral
 Sistema de gestão de pedidos para gráfica de rótulos e etiquetas com suporte para clientes, catálogo de etiquetas, orçamentos e pedidos de produção.

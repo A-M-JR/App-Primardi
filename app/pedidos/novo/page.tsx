@@ -47,6 +47,9 @@ function NovoPedidoForm() {
                 if ((data as any).ocCliente) {
                     setOcCliente((data as any).ocCliente)
                 }
+                if (data.valorFrete !== undefined) {
+                    setValorFrete(data.valorFrete.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+                }
             }
             setFormasPagamento(formas || [])
             setLoading(false)
@@ -57,10 +60,6 @@ function NovoPedidoForm() {
     const vendedor = orcamento?.vendedor
 
     // Formulário State
-    const [sentidoSaidaRolo, setSentidoSaidaRolo] = useState("Ext 0º")
-    const [tipoTubete, setTipoTubete] = useState("40")
-    const [numeroPistas, setNumeroPistas] = useState("1")
-    const [gapEntreProdutos, setGapEntreProdutos] = useState("3mm")
 
     const [prazoEntrega, setPrazoEntrega] = useState(() => {
         const d = new Date()
@@ -69,6 +68,7 @@ function NovoPedidoForm() {
     })
     const [formaPagamento, setFormaPagamento] = useState("30/60 Dias")
     const [frete, setFrete] = useState("FOB")
+    const [valorFrete, setValorFrete] = useState("0,00")
     const [comprador, setComprador] = useState("")
     const [ocCliente, setOcCliente] = useState("")
 
@@ -104,16 +104,12 @@ function NovoPedidoForm() {
                 orcamentoId: orcamento.id,
                 clienteId: orcamento.clienteId,
                 vendedorId: orcamento.vendedorId,
-                sentidoSaidaRolo,
-                tipoTubete,
-                gapEntreProdutos,
-                numeroPistas,
                 prazoEntrega,
-                formaPagamento, // Keep for backward compatibility/legacy
                 formaPagamentoId: formaPagamentoId ? Number(formaPagamentoId) : null,
                 nomeVendedor: vendedor?.nome,
                 nomeComprador: comprador,
                 frete,
+                valorFrete: parseFloat(valorFrete.replace(/\./g, '').replace(',', '.')) || 0,
                 observacoesGerais: obsGerais + (obsPcp ? `\n\n[PCP]: ${obsPcp}` : ""),
                 ocCliente,
                 totalGeral: orcamento.totalGeral,
@@ -200,7 +196,7 @@ function NovoPedidoForm() {
                                 const selected = formasPagamento.find(f => f.id.toString() === val)
                                 if (selected) setFormaPagamento(selected.nome)
                             }}>
-                                <SelectTrigger id="formaPagamento">
+                                <SelectTrigger id="formaPagamento" className="w-full">
                                     <SelectValue placeholder="Selecione..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -223,7 +219,7 @@ function NovoPedidoForm() {
                         <div className="space-y-2">
                             <Label htmlFor="frete">Tipo de Frete</Label>
                             <Select value={frete} onValueChange={setFrete}>
-                                <SelectTrigger id="frete">
+                                <SelectTrigger id="frete" className="w-full">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -232,6 +228,22 @@ function NovoPedidoForm() {
                                     <SelectItem value="Retirada">Retirada na Fábrica</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="valorFrete">Valor do Frete (R$)</Label>
+                            <Input 
+                                id="valorFrete" 
+                                value={valorFrete} 
+                                onChange={e => {
+                                    let v = e.target.value.replace(/\D/g, '');
+                                    if (!v) v = "0";
+                                    const n = parseInt(v, 10) / 100;
+                                    setValorFrete(n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                                }} 
+                                placeholder="0,00"
+                                disabled={frete === "FOB" || frete === "Retirada"}
+                                className={frete === "FOB" || frete === "Retirada" ? "opacity-50 w-full" : "w-full"}
+                            />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="ocCliente">OC do Cliente</Label>
@@ -244,40 +256,7 @@ function NovoPedidoForm() {
                     </CardContent>
                 </Card>
 
-                {/* Row 2: Dados de Produção e Acabamento */}
-                <Card className="border-border/50 shadow-sm">
-                    <CardHeader className="bg-muted/30 border-b border-border/50 pb-4">
-                        <CardTitle className="text-lg">Especificações Técnicas Genéricas</CardTitle>
-                        <CardDescription>Definições de rebobinagem e acabamento para a PCP</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="sentidoSaida">Sentido Saída do Rolo</Label>
-                            <Select value={sentidoSaidaRolo} onValueChange={setSentidoSaidaRolo}>
-                                <SelectTrigger id="sentidoSaida">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Ext 0º">Ext 0º (Pé 1º)</SelectItem>
-                                    <SelectItem value="Ext 90º">Ext 90º</SelectItem>
-                                    <SelectItem value="Ext 180º">Ext 180º (Cabeça 1º)</SelectItem>
-                                    <SelectItem value="Ext 270º">Ext 270º</SelectItem>
-                                    <SelectItem value="Int 0º">Int 0º (Pé 1º)</SelectItem>
-                                    <SelectItem value="Normalizado">Conforme Ficha</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
 
-                        
-
-                        <div className="space-y-2">
-                            <Label htmlFor="gap">Gap (Entre Produtos)</Label>
-                            <Input id="gap" value={gapEntreProdutos} onChange={e => setGapEntreProdutos(e.target.value)} placeholder="Ex: 3mm" />
-                        </div>
-
-                        
-                    </CardContent>
-                </Card>
 
                 {/* Row 3: Observações */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

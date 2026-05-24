@@ -70,8 +70,8 @@ export async function getPedidos(params: {
       COUNT(*) FILTER (WHERE p."statusId" = ${statusSeparacao})::int as separacao,
       COUNT(*) FILTER (WHERE p."statusId" = ${statusEntregue})::int as entregue,
       COALESCE(SUM(p."totalGeral"), 0)::float as total_valor
-    FROM "Pedido" p
-    LEFT JOIN "Cliente" c ON p."clienteId" = c.id
+    FROM "crm_pedidos" p
+    LEFT JOIN "crm_clientes" c ON p."clienteId" = c.id
     WHERE (p."numero" ILIKE ${searchPattern} OR c."razaoSocial" ILIKE ${searchPattern})
       AND (${vendedorId}::int IS NULL OR p."vendedorId" = ${vendedorId})
       AND (${dataInicio}::timestamp IS NULL OR p."criadoEm" >= ${dataInicio})
@@ -202,6 +202,19 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
     statusId = await getOrCreateStatus(1, String(statusIdent), ModuloStatus.PEDIDO)
   }
 
+  const oldPedido = await prisma.pedido.findUnique({ 
+    where: { id }, 
+    include: { status: true, itens: true } 
+  })
+  const oldStatusStr = mapStatusIdToStr(oldPedido?.status?.nome || '')
+
+  const newStatus = await prisma.status.findUnique({ where: { id: statusId } })
+  const newStatusStr = mapStatusIdToStr(newStatus?.nome || '')
+
+  const progressiveStates = ['em_producao', 'separacao', 'entregue']
+  const wasProgressive = progressiveStates.includes(oldStatusStr)
+  const isProgressive = progressiveStates.includes(newStatusStr)
+
   const updated = await prisma.pedido.update({
     where: { id },
     data: { statusId },
@@ -215,6 +228,85 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
       }
     }
   })
+
+  // Logica de Baixa/Estorno de Estoque
+  if (!wasProgressive && isProgressive) {
+    // Baixar estoque
+    const { addMovimentacaoEstoque } = await import('./estoque')
+    for (const item of updated.itens) {
+      if (item.produtoId) {
+        await addMovimentacaoEstoque({
+          produtoId: item.produtoId,
+          tipo: 'SAIDA',
+          quantidade: item.quantidade,
+          descricao: `estoque baixado no pedido ${updated.numero}`,
+          pedidoId: updated.id
+        }).catch(e => console.error("Erro ao dar baixa no estoque:", e))
+      }
+    }
+  } else if (wasProgressive && !isProgressive) {
+    // Retornar estoque
+    const { addMovimentacaoEstoque } = await import('./estoque')
+    for (const item of updated.itens) {
+      if (item.produtoId) {
+        await addMovimentacaoEstoque({
+          produtoId: item.produtoId,
+          tipo: 'ENTRADA',
+          quantidade: item.quantidade,
+          descricao: `estorno de estoque do pedido ${updated.numero} (status retornado)`,
+          pedidoId: updated.id
+        }).catch(e => console.error("Erro ao estornar estoque:", e))
+      }
+    }
+  }
+
+  revalidatePath("/pedidos")
+  revalidatePath(`/pedidos/${id}`)
+  return {
+    ...updated,
+    status: mapStatusIdToStr(updated.status?.nome || ''),
+    criadoEm: updated.criadoEm.toISOString(),
+    atualizadoEm: updated.atualizadoEm.toISOString(),
+    prazoEntrega: updated.prazoEntrega ? updated.prazoEntrega.toISOString() : null,
+  }
+}
+
+export async function updatePedidoDetails(id: number, data: {
+  tipoFrete?: string
+  valorFrete?: number
+  nomeComprador?: string
+  ocCliente?: string
+  observacoesGerais?: string
+}, requesterId: number) {
+  // SEGURANÇA: Vendedor só edita o dele
+  if (requesterId) {
+    const ctx = await getRequesterContext(requesterId)
+    if (!ctx.isAdmin) {
+      const ped = await prisma.pedido.findUnique({ where: { id }, select: { vendedorId: true } })
+      if (!ped || ped.vendedorId !== ctx.vendedorId) throw new Error("Acesso negado.")
+    }
+  }
+
+  const updated = await prisma.pedido.update({
+    where: { id },
+    data: {
+      ...(data.tipoFrete !== undefined && { tipoFrete: data.tipoFrete }),
+      ...(data.valorFrete !== undefined && { valorFrete: data.valorFrete }),
+      ...(data.nomeComprador !== undefined && { nomeComprador: data.nomeComprador }),
+      ...(data.ocCliente !== undefined && { ocCliente: data.ocCliente }),
+      ...(data.observacoesGerais !== undefined && { observacoesGerais: data.observacoesGerais }),
+    },
+    include: { 
+      status: true,
+      cliente: true,
+      vendedor: true,
+      formaPagamento: true,
+      itens: {
+        include: { produto: true }
+      }
+    }
+  })
+
   revalidatePath("/pedidos")
   revalidatePath(`/pedidos/${id}`)
   return {
@@ -297,17 +389,13 @@ export async function savePedido(data: any, requesterId: number) {
     vendedorId: Number(forcedVendedorId || 0),
     statusId: Number(statusId),
     empresaId: ctx ? ctx.empresaId : 1,
-    sentidoSaidaRolo: rest.sentidoSaidaRolo || "Ext 0º",
-    tipoTubete: rest.tipoTubete || "76",
-    gapEntreProdutos: rest.gapEntreProdutos || "3mm",
-    numeroPistas: Number(rest.numeroPistas) || 1,
     observacoesEmbalagem: rest.observacoesEmbalagem || "",
     observacoesFaturamento: rest.observacoesFaturamento || "",
     prazoEntrega: rest.prazoEntrega ? new Date(rest.prazoEntrega) : null,
-    formaPagamento: rest.formaPagamento || "A combinar",
     nomeVendedor: rest.nomeVendedor || "",
     nomeComprador: rest.nomeComprador || "",
-    frete: rest.frete || "FOB",
+    tipoFrete: rest.frete || rest.tipoFrete || "FOB",
+    valorFrete: isNaN(Number(rest.valorFrete)) ? 0 : Number(rest.valorFrete),
     observacoesGerais: rest.observacoesGerais || "",
     totalGeral: isNaN(Number(rest.totalGeral)) ? 0 : Number(rest.totalGeral),
     formaPagamentoId: rest.formaPagamentoId ? Number(rest.formaPagamentoId) : null,

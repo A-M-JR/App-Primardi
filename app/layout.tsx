@@ -10,21 +10,25 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.alvarobueno.com.br'),
+  metadataBase: new URL('https://www.primardi.com.br'),
   title: 'Primardi - Gestão Comercial',
   description: 'Sistema de gestão de pedidos, orçamentos e clientes.',
   icons: {
-    icon: '/icon-32x32.png',
-    apple: '/logo_quadrada.png',
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
   },
   openGraph: {
     title: 'Primardi - Gestão Comercial',
     description: 'Sistema de gestão de pedidos, orçamentos e clientes.',
-    url: 'https://www.alvarobueno.com.br',
+    url: 'https://www.primardi.com.br',
     siteName: 'Primardi',
     images: [
       {
-        url: '/logo_quadrada.png',
+        url: '/logo_primardi.jpg',
         width: 1000,
         height: 1000,
       },
@@ -36,7 +40,7 @@ export const metadata: Metadata = {
     card: 'summary',
     title: 'Primardi - Gestão Comercial',
     description: 'Sistema de gestão de pedidos, orçamentos e clientes.',
-    images: ['/logo_quadrada.png'],
+    images: ['/logo_primardi.jpg'],
   },
 }
 

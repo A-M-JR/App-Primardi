@@ -96,7 +96,7 @@ export function UsuarioFormDialog({ usuario, vendedores, onSave, onClose }: Usua
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="joao@newflexo.com"
+                placeholder="joao@primardi.com"
                 className="bg-muted/50 focus-visible:bg-background"
                 required
               />

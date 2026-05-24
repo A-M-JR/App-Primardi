@@ -9,10 +9,10 @@ async function main() {
     where: { cnpj: '00000000000000' },
     update: {},
     create: {
-      razaoSocial: 'Newflexo Tecnologias (Padrão)',
-      nomeFantasia: 'Newflexo',
+      razaoSocial: 'Primardi Tecnologias (Padrão)',
+      nomeFantasia: 'Primardi',
       cnpj: '00000000000000',
-      email: 'contato@newflexo.com.br',
+      email: 'contato@primardi.com.br',
       telefone: '(11) 99999-9999',
       logradouro: 'Rua das Flores',
       numero: '100',
@@ -28,12 +28,12 @@ async function main() {
 
   // 2. Criar Vendedor Padrão
   const vendedor = await prisma.vendedor.upsert({
-    where: { empresaId_email: { empresaId: empresa.id, email: 'vendedor@newflexo.com.br' } },
+    where: { empresaId_email: { empresaId: empresa.id, email: 'vendedor@primardi.com.br' } },
     update: {},
     create: {
       empresaId: empresa.id,
       nome: 'Vendedor Teste',
-      email: 'vendedor@newflexo.com.br',
+      email: 'vendedor@primardi.com.br',
       telefone: '(11) 99999-9999',
       comissao: 5.0,
       regiao: 'São Paulo',
@@ -46,12 +46,12 @@ async function main() {
   // (Nota: em produção, a senha deve estar hashada. A função saveUser nas actions faz isso)
   const adminHash = await import('bcryptjs').then(mod => (mod.default || mod).hashSync('admin', 10))
   const admin = await prisma.user.upsert({
-    where: { empresaId_email: { empresaId: empresa.id, email: 'admin@newflexo.com.br' } },
+    where: { empresaId_email: { empresaId: empresa.id, email: 'admin@primardi.com.br' } },
     update: { role: UserRole.ADMIN, empresaId: empresa.id, senha: adminHash, ativo: true },
     create: {
       empresaId: empresa.id,
       nome: 'Administrador',
-      email: 'admin@newflexo.com.br',
+      email: 'admin@primardi.com.br',
       senha: adminHash,
       role: UserRole.ADMIN,
       ativo: true
@@ -62,12 +62,12 @@ async function main() {
   // 4. Criar Usuário Vendedor
   const vendHash = await import('bcryptjs').then(mod => (mod.default || mod).hashSync('123', 10))
   const userVend = await prisma.user.upsert({
-    where: { empresaId_email: { empresaId: empresa.id, email: 'vendedor@newflexo.com.br' } },
+    where: { empresaId_email: { empresaId: empresa.id, email: 'vendedor@primardi.com.br' } },
     update: { role: UserRole.VENDEDOR, empresaId: empresa.id, senha: vendHash, ativo: true },
     create: {
       empresaId: empresa.id,
       nome: 'Vendedor Teste',
-      email: 'vendedor@newflexo.com.br',
+      email: 'vendedor@primardi.com.br',
       senha: vendHash,
       role: UserRole.VENDEDOR,
       vendedorId: vendedor.id,

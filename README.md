@@ -1,6 +1,6 @@
 <div align="center">
   <img src="https://ui.shadcn.com/favicon.ico" alt="Logo" width="80" height="80">
-  <h1 align="center">App Newflexo</h1>
+  <h1 align="center">App Primardi</h1>
   <p align="center">
     Sistema Premium de Gestão Comercial e Operacional para Indústria de Etiquetas e Embalagens Flexográficas.
     <br />
@@ -17,7 +17,7 @@
 
 ## 🚀 Visão Geral
 
-O **App Newflexo** é um sistema B2B tailormade criado para gerenciar o clico de vendas e produção na indústria flexográfica. Ele oferece uma interface moderna em *Glassmorphism* (via Tailwind CSS / Shadcn UI) e alta performance utilizando Server Actions do Next.js. De orçamentos complexos até Inteligência Artificial embutida que interage com os dados: tudo flui numa única plataforma B2B.
+O **App Primardi** é um sistema B2B tailormade criado para gerenciar o clico de vendas e produção na indústria flexográfica. Ele oferece uma interface moderna em *Glassmorphism* (via Tailwind CSS / Shadcn UI) e alta performance utilizando Server Actions do Next.js. De orçamentos complexos até Inteligência Artificial embutida que interage com os dados: tudo flui numa única plataforma B2B.
 
 ## ✨ Funcionalidades
 
@@ -52,7 +52,7 @@ Este projeto foi construído usando o estado da arte do ecossistema React/Node:
 ```bash
 # Clone o repositório 
 git clone <SEU_REPOSITORIO>
-cd app_newflexo
+cd app_primardi
 
 # Instale os pacotes e dependências
 yarn install # ou npm install
@@ -64,7 +64,7 @@ cp .env.example .env
 Abra o arquivo `.env` e ajuste apenas o estritamente necessário (não comitar dados sensíveis).
 ```env
 # Exemplo genérico
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/newflexodb"
+DATABASE_URL="postgresql://usuario:senha@localhost:5432/primardidb"
 ```
 
 ### 3. Subindo o Banco e Populando

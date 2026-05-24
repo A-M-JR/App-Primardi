@@ -20,7 +20,7 @@ export async function addMovimentacaoCredito(data: {
   return await prisma.$transaction(async (tx) => {
     // 1. Registra a movimentação via Raw SQL
     await tx.$executeRaw`
-      INSERT INTO "MovimentacaoCredito" (
+      INSERT INTO "crm_movimentacoes_credito" (
         "clienteId", tipo, operacao, quantidade, descricao, "orcamentoId", "criadoEm"
       )
       VALUES (
@@ -31,8 +31,8 @@ export async function addMovimentacaoCredito(data: {
     // 2. Atualiza o saldo do cliente via Raw SQL
     if (tipo === 'VALOR') {
       const sql = isCredito 
-        ? tx.$executeRaw`UPDATE "Cliente" SET "saldoCreditoValor" = "saldoCreditoValor" + ${valorNum} WHERE id = ${clienteId}`
-        : tx.$executeRaw`UPDATE "Cliente" SET "saldoCreditoValor" = "saldoCreditoValor" - ${valorNum} WHERE id = ${clienteId}`
+        ? tx.$executeRaw`UPDATE "crm_clientes" SET "saldoCreditoValor" = "saldoCreditoValor" + ${valorNum} WHERE id = ${clienteId}`
+        : tx.$executeRaw`UPDATE "crm_clientes" SET "saldoCreditoValor" = "saldoCreditoValor" - ${valorNum} WHERE id = ${clienteId}`
       await sql
     } else {
       const sql = isCredito
@@ -49,7 +49,7 @@ export async function addMovimentacaoCredito(data: {
 export async function getMovimentacoesByCliente(clienteId: number) {
   noStore()
   return await prisma.$queryRaw`
-    SELECT * FROM "MovimentacaoCredito" 
+    SELECT * FROM "crm_movimentacoes_credito" 
     WHERE "clienteId" = ${clienteId} 
     ORDER BY "criadoEm" DESC
   ` as any[]

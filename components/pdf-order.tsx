@@ -17,7 +17,7 @@ export function PDFOrder({ pedido, cliente, vendedor }: PDFOrderProps) {
       <div className="border-b-2 border-gray-300 pb-6 mb-6">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-blue-900">NEWFLEXO</h1>
+            <h1 className="text-3xl font-bold text-blue-900">PRIMARDI</h1>
             <p className="text-sm text-gray-600">Gestão Comercial de Produtos</p>
           </div>
           <div className="text-right">

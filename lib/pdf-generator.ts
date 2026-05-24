@@ -2,14 +2,13 @@ import jsPDF from "jspdf";
 import type { Pedido, Cliente, Vendedor } from "./types";
 import { getEmpresa } from "@/lib/actions/config";
 
-// Premium Colors
-const PRIMARY_BLUE = [15, 38, 74] as [number, number, number]; // Very dark, elegant blue
-const MUTED_BLUE = [235, 240, 245] as [number, number, number]; // Very light blue for backgrounds
-const TEXT_MAIN = [30, 30, 30] as [number, number, number];
-const TEXT_MUTED = [100, 100, 100] as [number, number, number];
-const BORDER_LIGHT = [220, 220, 220] as [number, number, number];
-const WHITE = [255, 255, 255] as [number, number, number];
-const ACCENT_GOLD = [200, 150, 50] as [number, number, number]; // Optional accent
+const PRIMARY_GREEN = [6, 58, 31] as [number, number, number] // #063A1F
+const ACCENT_GREEN = [0, 230, 118] as [number, number, number] // #00E676
+const MUTED_GREEN = [240, 246, 243] as [number, number, number]
+const TEXT_MAIN = [40, 40, 40] as [number, number, number]
+const TEXT_MUTED = [100, 100, 100] as [number, number, number]
+const BORDER_LIGHT = [220, 225, 220] as [number, number, number]
+const WHITE = [255, 255, 255] as [number, number, number]
 
 function formatCurrencyPDF(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -33,7 +32,8 @@ function drawRect(doc: jsPDF, x: number, y: number, w: number, h: number, fillCo
 
 async function getLogoBase64() {
   try {
-    const res = await fetch('/logo_sem_fundo.png');
+    const res = await fetch('/logo_sem_fundo_primardi.png');
+    if (!res.ok) return null;
     const blob = await res.blob();
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -63,34 +63,45 @@ export async function gerarPDFPedido(pedido: Pedido, cliente: Cliente, vendedor?
   // ============================================================
 
   // Linha de acento sutil no topo
-  doc.setFillColor(...PRIMARY_BLUE);
-  doc.rect(0, 0, pageW, 4, "F");
+  doc.setFillColor(...PRIMARY_GREEN);
+  doc.rect(0, 0, pageW, 6, "F");
+  doc.setFillColor(...ACCENT_GREEN);
+  doc.rect(0, 6, pageW, 1.5, "F");
 
   y = margin + 5;
 
   const logoBase64 = await getLogoBase64();
 
   // Logo / Nome da empresa (esquerda)
+  let companyInfoX = margin;
+  let companyInfoY = y + 16;
+
   if (logoBase64) {
-    // A logo original é 2048x2048 com muito padding transparente ao redor.
-    // Aumentamos o tamanho total para 45x45 e jogamos o Y para cima para que o centro visual (a logo real) caiba perfeitamente no cabeçalho sem empurrar o layout.
-    doc.addImage(logoBase64, "PNG", margin - 2, y - 16, 45, 45);
+    doc.addImage(logoBase64, "PNG", margin - 2, y - 8, 30, 30);
+    companyInfoX = margin + 28;
+    companyInfoY = y + 4;
+
+    doc.setTextColor(...PRIMARY_GREEN);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(empresaData.nomeFantasia.toUpperCase(), companyInfoX, companyInfoY);
+    companyInfoY += 6;
   } else {
-    doc.setTextColor(...PRIMARY_BLUE);
+    doc.setTextColor(...PRIMARY_GREEN);
     doc.setFontSize(24);
     doc.setFont("helvetica", "bold");
-    doc.text(empresaData.nomeFantasia.toUpperCase(), margin, y + 6);
+    doc.text(empresaData.nomeFantasia.toUpperCase(), companyInfoX, y + 6);
   }
 
   doc.setTextColor(...TEXT_MUTED);
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(`${empresaData.razaoSocial}`, margin, y + 16);
-  doc.text(`CNPJ: ${empresaData.cnpj}`, margin, y + 20);
+  doc.text(`${empresaData.razaoSocial}`, companyInfoX, companyInfoY);
+  doc.text(`CNPJ: ${empresaData.cnpj}`, companyInfoX, companyInfoY + 4);
   
   const contactTel = vendedor?.telefone || empresaData.telefone;
   const contactEmail = vendedor?.email || empresaData.email;
-  doc.text(`Contato: ${contactTel} | ${contactEmail}`, margin, y + 24);
+  doc.text(`Contato: ${contactTel} | ${contactEmail}`, companyInfoX, companyInfoY + 8);
 
   // Informações do Documento (direita)
   doc.setFontSize(10);
@@ -99,7 +110,7 @@ export async function gerarPDFPedido(pedido: Pedido, cliente: Cliente, vendedor?
   doc.text("DOCUMENTO DE CONFIRMAÇÃO", pageW - margin, y + 4, { align: "right" });
 
   doc.setFontSize(18);
-  doc.setTextColor(...PRIMARY_BLUE);
+  doc.setTextColor(...PRIMARY_GREEN);
   doc.text(pedido.numero, pageW - margin, y + 12, { align: "right" });
 
   doc.setFontSize(8);
@@ -188,9 +199,9 @@ export async function gerarPDFPedido(pedido: Pedido, cliente: Cliente, vendedor?
   // ============================================================
 
   // Headers Background Faint
-  drawRect(doc, margin, y, contentW, 8, MUTED_BLUE);
+  drawRect(doc, margin, y, contentW, 8, MUTED_GREEN);
 
-  doc.setTextColor(...PRIMARY_BLUE);
+  doc.setTextColor(...PRIMARY_GREEN);
   doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
 
@@ -221,8 +232,8 @@ export async function gerarPDFPedido(pedido: Pedido, cliente: Cliente, vendedor?
     if (y + rowH > pageH - 50) {
       doc.addPage();
       y = margin;
-      drawRect(doc, margin, y, contentW, 8, MUTED_BLUE);
-      doc.setTextColor(...PRIMARY_BLUE);
+      drawRect(doc, margin, y, contentW, 8, MUTED_GREEN);
+      doc.setTextColor(...PRIMARY_GREEN);
       doc.setFontSize(7);
       doc.setFont("helvetica", "bold");
       doc.text("DESCRIÇÃO DO PRODUTO", cols.desc.x, y + 5.5);
@@ -280,23 +291,7 @@ export async function gerarPDFPedido(pedido: Pedido, cliente: Cliente, vendedor?
 
   // Bloco de Notas (Left) e Totais (Right)
   const leftW = contentW * 0.6;
-
-  const obsText = [
-    pedido.observacoesGerais && `Notas Adicionais: ${pedido.observacoesGerais}`,
-  ].filter(Boolean).join("\n");
-
-  if (obsText) {
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...TEXT_MUTED);
-    doc.text("OBSERVAÇÕES IMPORTANTES:", margin, y);
-
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...TEXT_MAIN);
-    const obsLines = doc.splitTextToSize(obsText, leftW);
-    doc.text(obsLines, margin, y + 5);
-  }
+  const obsText = ""; // Removido as observações de produção conforme solicitado
 
   // Bloco Totalizador e Assinaturas
   const footerY = y;
@@ -307,8 +302,8 @@ export async function gerarPDFPedido(pedido: Pedido, cliente: Cliente, vendedor?
   doc.text("TOTAL DO PEDIDO:", pageW - margin - 35, footerY, { align: "right" });
 
   doc.setFontSize(16);
-  doc.setTextColor(...PRIMARY_BLUE);
-  doc.text(formatCurrencyPDF(pedido.totalGeral), pageW - margin, footerY, { align: "right" });
+  doc.setTextColor(...PRIMARY_GREEN);
+  doc.text(formatCurrencyPDF(pedido.totalGeral + (pedido.valorFrete || 0)), pageW - margin, footerY, { align: "right" });
 
   // Assinaturas minimalistas
   y += Math.max(30, obsText ? 20 : 0);
@@ -343,7 +338,7 @@ export async function gerarPDFPedido(pedido: Pedido, cliente: Cliente, vendedor?
   const pageCount = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFillColor(...MUTED_BLUE);
+    doc.setFillColor(...MUTED_GREEN);
     doc.rect(0, pageH - 12, pageW, 12, "F");
 
     doc.setTextColor(...TEXT_MUTED);

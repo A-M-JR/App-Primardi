@@ -65,7 +65,7 @@ export async function getEmpresa(): Promise<Empresa> {
           nomeFantasia: "Primardi",
           cnpj: "18.330.143/0001-38",
           telefone: "(62) 3142-9993",
-          email: "contato@newflexo.com",
+          email: "contato@primardi.com",
           cep: "74474-046",
           logradouro: "R Jg 17",
           numero: "S/N",

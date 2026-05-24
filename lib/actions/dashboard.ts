@@ -27,8 +27,8 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
   const pedidoMetrics: any[] = await prisma.$queryRaw`
     SELECT 
       COALESCE(SUM("totalGeral"), 0)::float as total_receita,
-      COUNT(*) FILTER (WHERE "statusId" NOT IN (SELECT id FROM "Status" WHERE "modulo" = 'pedido' AND ("nome" ILIKE '%Entregue%' OR "nome" ILIKE '%Entrega%')))::int as ativos_count
-    FROM "Pedido"
+      COUNT(*) FILTER (WHERE "statusId" NOT IN (SELECT id FROM "crm_status" WHERE "modulo" = 'pedido' AND ("nome" ILIKE '%Entregue%' OR "nome" ILIKE '%Entrega%')))::int as ativos_count
+    FROM "crm_pedidos"
     WHERE (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
       AND "ativo" = TRUE
   `
@@ -37,7 +37,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
   // Buscamos orçamentos aguardando aprovação (statusId 4)
   const orcamentoMetrics: any[] = await prisma.$queryRaw`
     SELECT COUNT(*)::int as total_orcamentos
-    FROM "Orcamento"
+    FROM "crm_orcamentos"
     WHERE "statusId" = 4
       AND (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
       AND "ativo" = TRUE
@@ -47,10 +47,10 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
   // Buscamos clientes inativos (mais de 40 dias sem compra e que já compraram antes)
   const clienteMetrics: any[] = await prisma.$queryRaw`
     SELECT COUNT(*)::int as inativos_count
-    FROM "Cliente" c
+    FROM "crm_clientes" c
     WHERE "ultimaCompra" < ${quarentaDiasAtras}
       AND "ultimaCompra" IS NOT NULL
-      AND (${searchVendedor}::int IS NULL OR EXISTS (SELECT 1 FROM "Pedido" p WHERE p."clienteId" = c.id AND p."vendedorId" = ${searchVendedor}))
+      AND (${searchVendedor}::int IS NULL OR EXISTS (SELECT 1 FROM "crm_pedidos" p WHERE p."clienteId" = c.id AND p."vendedorId" = ${searchVendedor}))
   `
   const cliStats = clienteMetrics[0] || { inativos_count: 0 }
 
@@ -82,7 +82,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
         EXTRACT(MONTH FROM "criadoEm")::int as mes,
         EXTRACT(YEAR FROM "criadoEm")::int as ano,
         COUNT(*)::int as count
-      FROM "Orcamento"
+      FROM "crm_orcamentos"
       WHERE "criadoEm" >= ${sixMonthsAgo}
         AND (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
         AND "ativo" = TRUE
@@ -94,7 +94,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
         EXTRACT(MONTH FROM "criadoEm")::int as mes,
         EXTRACT(YEAR FROM "criadoEm")::int as ano,
         COUNT(*)::int as count
-      FROM "Pedido"
+      FROM "crm_pedidos"
       WHERE "criadoEm" >= ${sixMonthsAgo}
         AND (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
         AND "ativo" = TRUE

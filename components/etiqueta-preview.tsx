@@ -48,7 +48,7 @@ export function LabelPreview({ largura, altura, material, cores, aplicacoes }: L
             {aplicacoes.includes("Hot Stamping") && <div className="size-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-pulse" />}
             {aplicacoes.includes("Verniz UV Local") && <div className="size-2 rounded-full bg-blue-300/50 ring-1 ring-blue-400 border border-white" />}
           </div>
-          <div className="mt-2 text-[8px] font-mono text-slate-300">NEWFLEXO</div>
+          <div className="mt-2 text-[8px] font-mono text-slate-300">PRIMARDI</div>
         </div>
         <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[80%] h-2 bg-black/5 blur-md rounded-full" />
       </div>

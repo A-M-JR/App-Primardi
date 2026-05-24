@@ -13,6 +13,12 @@ export async function getProdutos() {
             select: { id: true, razaoSocial: true }
           }
         }
+      },
+      tabelasPreco: {
+        select: {
+          tabelaPrecoId: true,
+          preco: true
+        }
       }
     }
   })
@@ -53,23 +59,16 @@ export async function saveProduto(data: any, empresaId = 1) {
     const { id, clientes, ...rest } = data
     
     const prismaData = {
-    empresaId,
+      empresaId,
       nome: rest.nome,
       codigo: rest.codigo,
-      material: rest.material,
-      tipoAdesivo: rest.tipoAdesivo,
-      largura: Number(rest.largura),
-      altura: Number(rest.altura),
-      numeroCores: Number(rest.numeroCores),
-      tipoTubete: rest.tipoTubete,
-      quantidadePorRolo: Number(rest.quantidadePorRolo),
-      metragem: rest.metragem ? Number(rest.metragem) : null,
-      preco: rest.preco ? Number(rest.preco) : 0,
-      coresDescricao: rest.coresDescricao || null,
-      observacoesTecnicas: rest.observacoesTecnicas || null,
-      pasta: rest.pasta || null,
-      aplicacoesEspeciais: rest.aplicacoesEspeciais || [],
+      ean: rest.ean,
+      descricao: rest.descricao || null,
+      unidadePadrao: rest.unidadePadrao || "UN",
+      precoBase: rest.precoBase ? Number(rest.precoBase) : 0,
       ativo: rest.ativo !== undefined ? rest.ativo : true,
+      categoriaId: rest.categoriaId ? Number(rest.categoriaId) : null,
+      fornecedorId: rest.fornecedorId ? Number(rest.fornecedorId) : null,
     }
 
     if (!id) {
