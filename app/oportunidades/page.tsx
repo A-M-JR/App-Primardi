@@ -105,7 +105,7 @@ export default function OportunidadesPage() {
 
         const userMsg = chatInput.trim()
         setChatInput("")
-        setChatHistory(prev => [...prev, { role: 'user', content: userMsg }])
+        setChatHistory((prev: any) => [...prev, { role: 'user', content: userMsg }])
         setAnalyzingIA(true)
 
         try {
@@ -131,14 +131,15 @@ export default function OportunidadesPage() {
                     apiKey: config.apiKey,
                     systemPrompt: "Você é o CGO da Primardi. Responda de forma curta e estratégica sobre os dados de oportunidades fornecidos. Mantenha o foco em ações comerciais e produtividade.",
                     includeTools: false,
-                    vendedorId: isVendedor ? vendedor?.id : undefined
+                    vendedorId: isVendedor ? vendedor?.id : undefined,
+                    empresaId: currentUser?.empresaId || 1
                 }),
             })
 
             const data = await res.json()
             if (data.error) throw new Error(data.error)
             
-            setChatHistory(prev => [...prev, { role: 'assistant', content: data.reply }])
+            setChatHistory((prev: any) => [...prev, { role: 'assistant', content: data.reply }])
         } catch (error: any) {
             toast.error(error.message || "Erro na resposta da IA.")
             console.error(error)
