@@ -11,10 +11,12 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
     const sessentaDiasAtras = new Date(today.getTime() - (60 * 24 * 60 * 60 * 1000))
 
     let vendedorId = vendedorIdParam
+    let empresaId = 1 // Default fallback
   
     // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
     if (requesterId) {
         const ctx = await getRequesterContext(requesterId)
+        empresaId = ctx.empresaId || 1
         if (!ctx.isAdmin) {
             vendedorId = ctx.vendedorId as number // Força o vendedorId dele
         }
@@ -33,34 +35,39 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
 
     const vendedores = await prisma.vendedor.findMany({ 
         where: { 
+            empresaId,
             ativo: true,
             id: searchVendedor ? searchVendedor : undefined
         } 
     })
 
-    const rankingVendedores = vendedores.map(v => {
-        const pedidosVendedor = pedidos.filter(p => p.vendedorId === v.id && !p.status?.nome.toLowerCase().includes('cancelado'))
-        const totalVendas = pedidosVendedor.reduce((acc, p) => acc + Number(p.totalGeral || 0), 0)
+    const rankingVendedores = vendedores.map((v: any) => {
+        const pedidosVendedor = pedidos.filter((p: any) => p.vendedorId === v.id && !p.status?.nome.toLowerCase().includes('cancelado'))
+        const totalVendas = pedidosVendedor.reduce((acc: any, p: any) => acc + Number(p.totalGeral || 0), 0)
         return {
             id: v.id,
             nome: v.nome,
             total: totalVendas,
             quantidade: pedidosVendedor.length
         }
-    }).sort((a, b) => b.total - a.total)
+    }).sort((a: any, b: any) => b.total - a.total)
 
     // 2. Oportunidades de Reativação (Novos critérios: Sem compra OU +30 dias sem orçamento)
     const clientes = await prisma.cliente.findMany({ 
         where: { 
+            empresaId,
             ativo: true,
-            OR: searchVendedor ? [
-                { pedidos: { some: { vendedorId: searchVendedor } } },
-                { orcamentos: { some: { vendedorId: searchVendedor } } }
-            ] : undefined
+            ...(searchVendedor ? {
+                OR: [
+                    { pedidos: { some: { vendedorId: searchVendedor } } },
+                    { orcamentos: { some: { vendedorId: searchVendedor } } }
+                ]
+            } : {})
         } 
     })
     const todosOrcamentos = await prisma.orcamento.findMany({ 
         where: { 
+            empresaId,
             ativo: true,
             vendedorId: searchVendedor ? searchVendedor : undefined
         },
@@ -68,19 +75,19 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
         select: { clienteId: true, criadoEm: true }
     })
     
-    const clientesRisco = clientes.filter(c => {
+    const clientesRisco = clientes.filter((c: any) => {
         // 1. Nunca comprou
         if (!c.ultimaCompra) return true
         
         // 2. Último orçamento foi há mais de 30 dias
-        const orcamentosDoCliente = todosOrcamentos.filter(o => o.clienteId === c.id)
+        const orcamentosDoCliente = todosOrcamentos.filter((o: any) => o.clienteId === c.id)
         const ultimoOrcamento = orcamentosDoCliente[0]?.criadoEm
         
         if (!ultimoOrcamento) return true // Se nunca orçou também entra
         
         return ultimoOrcamento < trintaDiasAtras
-    }).map(c => {
-        const orcamentosDoCliente = todosOrcamentos.filter(o => o.clienteId === c.id)
+    }).map((c: any) => {
+        const orcamentosDoCliente = todosOrcamentos.filter((o: any) => o.clienteId === c.id)
         const ultimoOrcamento = orcamentosDoCliente[0]?.criadoEm
         
         const dataReferencia = ultimoOrcamento || c.criadoEm
@@ -95,25 +102,25 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
             dias: diasSemAtividade,
             nivel: diasSemAtividade > 60 ? 'critico' : 'alerta'
         }
-    }).sort((a, b) => b.dias - a.dias)
+    }).sort((a: any, b: any) => b.dias - a.dias)
 
     // 3. Clientes sem Orçamento ou Pedido (Totalmente "zerados")
-    const clientesSemHistorico = clientes.filter(c => {
-        const temOrcamento = pedidos.some(p => p.clienteId === c.id) // Simplificando: se tem pedido, tem orçamento no histórico
+    const clientesSemHistorico = clientes.filter((c: any) => {
+        const temOrcamento = pedidos.some((p: any) => p.clienteId === c.id) // Simplificando: se tem pedido, tem orçamento no histórico
         // Na verdade, vamos checar orçamentos também para ser preciso
         return !temOrcamento
-    }).map(c => ({
+    }).map((c: any) => ({
         id: c.id,
         razaoSocial: c.razaoSocial,
         criadoEm: c.criadoEm
     }))
 
     // 4. Monitoramento de Produção (Todos os pedidos ativos, ordenados por prazo)
-    const pedidosProducao = pedidos.filter(p => {
+    const pedidosProducao = pedidos.filter((p: any) => {
         const statusNome = p.status?.nome || ''
         const finalizado = statusNome.includes('Entregue') || statusNome.includes('Cancelado') || statusNome.includes('Entrega')
         return !finalizado
-    }).map(p => {
+    }).map((p: any) => {
         const atrasado = p.prazoEntrega ? p.prazoEntrega < today : false
         return {
             id: p.id,
@@ -124,15 +131,15 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
             status: p.status?.nome,
             atrasado
         }
-    }).sort((a, b) => {
+    }).sort((a: any, b: any) => {
         if (!a.prazo) return 1
         if (!b.prazo) return -1
         return a.prazo.getTime() - b.prazo.getTime()
     })
 
     // 5. Resumo de Métricas
-    const validPedidos = pedidos.filter(p => !p.status?.nome.toLowerCase().includes('cancelado'))
-    const faturamentoTotal = validPedidos.reduce((acc, p) => acc + Number(p.totalGeral), 0)
+    const validPedidos = pedidos.filter((p: any) => !p.status?.nome.toLowerCase().includes('cancelado'))
+    const faturamentoTotal = validPedidos.reduce((acc: any, p: any) => acc + Number(p.totalGeral), 0)
     const ticketMedio = validPedidos.length > 0 ? faturamentoTotal / validPedidos.length : 0
 
     return {
@@ -146,7 +153,7 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
             totalClientes: clientes.length,
             totalPedidos: pedidos.length,
             pedidosEmProducao: pedidosProducao.length,
-            pedidosAtrasados: pedidosProducao.filter(p => p.atrasado).length
+            pedidosAtrasados: pedidosProducao.filter((p: any) => p.atrasado).length
         }
     }
 }
@@ -157,11 +164,13 @@ export async function generateOportunidadesInsight(vendedorIdParam?: number, req
     const { getAIConfig } = await import("./config")
     
     let vendedorId = vendedorIdParam
+    let empresaId = 1 // Default fallback
   
     // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
     if (requesterId) {
-        const { getRequesterVendedorId } = await import("./users")
+        const { getRequesterVendedorId, getRequesterContext } = await import("./users")
         const ctx = await getRequesterContext(requesterId)
+        empresaId = ctx.empresaId || 1
         if (!ctx.isAdmin) {
             vendedorId = ctx.vendedorId as number // Força o vendedorId dele
         }
@@ -169,16 +178,18 @@ export async function generateOportunidadesInsight(vendedorIdParam?: number, req
 
     const searchVendedor = vendedorId ? Number(vendedorId) : null
     
-    const context = await getAIContextSummary(searchVendedor || undefined)
+    const context = await getAIContextSummary(empresaId, searchVendedor || undefined)
     const config = await getAIConfig()
 
     if (config.provider === 'desativado' || !config.apiKey) {
         throw new Error("Módulo IA não configurado ou desativado.")
     }
 
-    const prompt = `Você é o CGO (Chief Growth Officer) da Primardi. Analise os dados operacionais abaixo e forneça uma estratégia rápida.
+    const prompt = `Você é o CGO (Chief Growth Officer) da Primardi, que é a plataforma de CRM/ERP que o usuário já utiliza.
+    Analise os dados operacionais abaixo e forneça uma estratégia rápida.
     
-    RESTRIÇÃO ABSOLUTA: Baseie-se EXCLUSIVAMENTE nos dados fornecidos abaixo. Não invente informações, não fale sobre assuntos externos à Primardi e mantenha o foco 100% nas operações e vendas.
+    RESTRIÇÃO ABSOLUTA 1: Baseie-se EXCLUSIVAMENTE nos dados fornecidos abaixo. Não reclame da falta de dados, trabalhe com o que você tem. Para 'Clientes VIP', deduza usando o maior volume de vendas ou orçamento, ou sugira reativar os inativos.
+    RESTRIÇÃO ABSOLUTA 2: O usuário JÁ ESTÁ usando o nosso CRM (Primardi). NUNCA, em hipótese alguma, sugira "contratar um CRM", "implementar um sistema" ou "usar planilhas". Foque em usar a própria plataforma para registrar follow-ups e contatos. Mantenha o foco 100% nas operações e vendas internas.
     
     ESTRUTURA DO RELATÓRIO:
     1. 🎯 FOCO PRIORITÁRIO: Qual a ação #1 que trará mais retorno HOJE? (Seja breve)
@@ -203,7 +214,7 @@ export async function generateOportunidadesInsight(vendedorIdParam?: number, req
                 messages: [{ role: "user", content: prompt }],
                 provider: config.provider,
                 apiKey: config.apiKey,
-                systemPrompt: "Você é um consultor de gestão industrial e comercial experiente.",
+                systemPrompt: "Você é um consultor CGO que trabalha dentro do CRM Primardi. Nunca sugira usar outros softwares, ferramentas ou CRMs externos.",
                 includeTools: false
             }),
         })
@@ -215,6 +226,7 @@ export async function generateOportunidadesInsight(vendedorIdParam?: number, req
         try {
             await prisma.aISugestao.create({
                 data: {
+                    empresaId,
                     tipo: searchVendedor ? `OPORTUNIDADES_VENDEDOR_${searchVendedor}` : "OPORTUNIDADES_GERAL",
                     dados: { insight: data.reply },
                     raciocinio: searchVendedor ? `Análise estratégica CGO Primardi para Vendedor #${searchVendedor}` : "Análise estratégica CGO Primardi",
@@ -234,10 +246,12 @@ export async function generateOportunidadesInsight(vendedorIdParam?: number, req
 
 export async function getLatestOportunidadesInsight(vendedorIdParam?: number, requesterId?: number) {
     let vendedorId = vendedorIdParam
+    let empresaId = 1
   
     // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
     if (requesterId) {
         const ctx = await getRequesterContext(requesterId)
+        empresaId = ctx.empresaId || 1
         if (!ctx.isAdmin) {
             vendedorId = ctx.vendedorId as number // Força o vendedorId dele
         }
@@ -248,6 +262,7 @@ export async function getLatestOportunidadesInsight(vendedorIdParam?: number, re
     try {
         const latest = await prisma.aISugestao.findFirst({
             where: {
+                empresaId,
                 tipo: searchVendedor ? `OPORTUNIDADES_VENDEDOR_${searchVendedor}` : "OPORTUNIDADES_GERAL",
                 status: "APLICADA"
             },
