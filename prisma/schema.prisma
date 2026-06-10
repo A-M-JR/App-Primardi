@@ -98,6 +98,18 @@ model Empresa {
   statusFunil          FunilStatus[]
   leads                Lead[]
 
+  // Compras
+  compraConfig         CompraConfigEmpresa?
+  fornecedorImportConfigs FornecedorImportConfig[]
+  fornecedorImportacoes   FornecedorImportacao[]
+  fornecedorProdutoMaps   FornecedorProdutoMap[]
+  fornecedorPrecosAtuais  FornecedorPrecoAtual[]
+  fornecedorPrecosHistorico FornecedorPrecoHistorico[]
+  sugestoesCompra        SugestaoCompra[]
+  cotacoesCompra         CotacaoCompra[]
+  pedidosCompra          PedidoCompra[]
+  compraAuditorias       CompraAuditoria[]
+
   @@map("crm_empresas")
 }
 
@@ -120,6 +132,7 @@ model User {
   empresa      Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   vendedor     Vendedor?       @relation(fields: [vendedorId], references: [id], onDelete: SetNull)
   chatMessages AIChatMessage[]
+  compraAuditorias CompraAuditoria[]
 
   @@unique([empresaId, email])
   @@index([empresaId])
@@ -242,6 +255,13 @@ model Fornecedor {
 
   empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   produtos Produto[]
+  importConfig       FornecedorImportConfig?
+  importacoes        FornecedorImportacao[]
+  produtoMaps        FornecedorProdutoMap[]
+  precosAtuais       FornecedorPrecoAtual[]
+  cotacoesFornecedor CotacaoCompraFornecedor[]
+  cotacaoEscolhas    CotacaoCompraEscolha[]
+  pedidosCompra      PedidoCompra[]
 
   @@index([empresaId])
   @@index([ativo])
@@ -272,6 +292,13 @@ model Produto {
   itensPedido          ItemPedido[]
   tabelasPreco         TabelaPrecoItem[]
   movimentacoesEstoque MovimentacaoEstoque[]
+  importacaoLinhas     FornecedorImportacaoLinha[]
+  fornecedorMaps       FornecedorProdutoMap[]
+  precosAtuais         FornecedorPrecoAtual[]
+  precosHistorico      FornecedorPrecoHistorico[]
+  sugestaoItens        SugestaoCompraItem[]
+  cotacaoItens         CotacaoCompraItem[]
+  itensPedidoCompra    ItemPedidoCompra[]
 
   @@unique([empresaId, codigo])
   @@index([empresaId])
@@ -729,4 +756,492 @@ model Lead {
   @@index([clienteId])
   @@index([ativo])
   @@map("crm_leads")
+}
+
+// ─────────────────────────────────────────────
+// COMPRAS & PORTAL DE FORNECEDORES
+// ─────────────────────────────────────────────
+
+enum TipoArquivoImportacao {
+  XLSX
+  XLS
+  CSV
+
+  @@map("crm_tipo_arquivo_importacao")
+}
+
+enum CampoImportacaoFornecedor {
+  CODIGO_FORNECEDOR
+  EAN
+  DESCRICAO
+  PRECO
+  ESTOQUE
+  MULTIPLO
+  EMBALAGEM
+  OBSERVACAO
+  LABORATORIO
+  FORNECEDOR
+
+  @@map("crm_campo_importacao_fornecedor")
+}
+
+enum StatusImportacao {
+  RASCUNHO
+  PROCESSANDO
+  CONCLUIDA
+  ERRO
+  CANCELADA
+
+  @@map("crm_status_importacao")
+}
+
+enum StatusImportacaoLinha {
+  PENDENTE
+  VALIDA
+  ERRO
+  IGNORADA
+  VINCULADA
+
+  @@map("crm_status_importacao_linha")
+}
+
+enum TipoMatchProduto {
+  EAN
+  CODIGO_FORNECEDOR
+  NOME_NORMALIZADO
+  MANUAL
+
+  @@map("crm_tipo_match_produto")
+}
+
+enum FonteConsumoCompra {
+  ITEM_PEDIDO
+  MOVIMENTACAO_ESTOQUE
+
+  @@map("crm_fonte_consumo_compra")
+}
+
+enum StatusSugestaoCompra {
+  RASCUNHO
+  GERADA
+  APROVADA
+  EM_COTACAO
+  CONVERTIDA
+  CANCELADA
+
+  @@map("crm_status_sugestao_compra")
+}
+
+enum StatusCotacaoCompra {
+  RASCUNHO
+  ABERTA
+  EM_RESPOSTA
+  FECHADA
+  CANCELADA
+
+  @@map("crm_status_cotacao_compra")
+}
+
+enum StatusCotacaoFornecedor {
+  PENDENTE
+  VISUALIZADA
+  RESPONDIDA
+  BLOQUEADA
+  EXPIRADA
+
+  @@map("crm_status_cotacao_fornecedor")
+}
+
+enum StatusPedidoCompra {
+  RASCUNHO
+  ENVIADO
+  CONFIRMADO
+  RECEBIDO_PARCIAL
+  RECEBIDO
+  CANCELADO
+
+  @@map("crm_status_pedido_compra")
+}
+
+enum AcaoAuditoriaCompra {
+  IMPORTAR
+  VINCULAR
+  APROVAR_SUGESTAO
+  ESCOLHER_VENCEDOR
+  GERAR_PEDIDO
+  RESPONDER_COTACAO
+
+  @@map("crm_acao_auditoria_compra")
+}
+
+model FornecedorImportConfig {
+  id               Int                   @id @default(autoincrement())
+  empresaId        Int
+  fornecedorId     Int                   @unique
+  tipoArquivo      TipoArquivoImportacao @default(XLSX)
+  nomeAba          String?
+  linhaCabecalho   Int                   @default(1)
+  linhaInicioDados Int                   @default(2)
+  delimitadorCsv   String?
+  encoding         String?               @default("utf-8")
+  ativo            Boolean               @default(true)
+  criadoEm         DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  criadoPorUserId  Int?
+
+  empresa     Empresa                  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  fornecedor  Fornecedor               @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+  campos      FornecedorImportCampo[]
+  importacoes FornecedorImportacao[]
+
+  @@index([empresaId])
+  @@map("crm_fornecedor_import_configs")
+}
+
+model FornecedorImportCampo {
+  id            Int                       @id @default(autoincrement())
+  configId      Int
+  campo         CampoImportacaoFornecedor
+  coluna        String
+  obrigatorio   Boolean                   @default(false)
+  transformacao String?
+
+  config FornecedorImportConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, campo])
+  @@map("crm_fornecedor_import_campos")
+}
+
+model FornecedorImportacao {
+  id                 Int              @id @default(autoincrement())
+  empresaId          Int
+  fornecedorId       Int
+  configId           Int?
+  nomeArquivo        String
+  hashArquivo        String?
+  status             StatusImportacao @default(RASCUNHO)
+  totalLinhas        Int              @default(0)
+  linhasValidas      Int              @default(0)
+  linhasErro         Int              @default(0)
+  linhasVinculadas   Int              @default(0)
+  mensagemErro       String?
+  importadoPorUserId Int
+  processadoEm       DateTime?
+  criadoEm           DateTime         @default(now())
+
+  empresa    Empresa                     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  fornecedor Fornecedor                  @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+  config     FornecedorImportConfig?     @relation(fields: [configId], references: [id], onDelete: SetNull)
+  linhas     FornecedorImportacaoLinha[]
+
+  @@index([empresaId, fornecedorId, criadoEm])
+  @@index([status])
+  @@map("crm_fornecedor_importacoes")
+}
+
+model FornecedorImportacaoLinha {
+  id                Int                   @id @default(autoincrement())
+  importacaoId      Int
+  numeroLinha       Int
+  status            StatusImportacaoLinha @default(PENDENTE)
+  dadosOriginais    Json
+  codigoFornecedor  String?
+  ean               String?
+  descricao         String?
+  preco             Float?
+  estoqueFornecedor Float?
+  multiplo          Float?
+  embalagem         String?
+  observacao        String?
+  laboratorio       String?
+  produtoId         Int?
+  erroMensagem      String?
+  matchTipo         TipoMatchProduto?
+
+  importacao  FornecedorImportacao @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+  produto     Produto?             @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  precoAtual  FornecedorPrecoAtual?
+
+  @@unique([importacaoId, numeroLinha])
+  @@index([importacaoId, status])
+  @@index([ean])
+  @@index([codigoFornecedor])
+  @@map("crm_fornecedor_importacao_linhas")
+}
+
+model FornecedorProdutoMap {
+  id                  Int              @id @default(autoincrement())
+  empresaId           Int
+  fornecedorId        Int
+  produtoId           Int
+  codigoFornecedor    String
+  eanFornecedor       String?
+  descricaoFornecedor String?
+  matchTipo           TipoMatchProduto
+  confirmadoManual    Boolean          @default(false)
+  ativo               Boolean          @default(true)
+  vinculadoPorUserId  Int?
+  criadoEm            DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  empresa    Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  fornecedor Fornecedor @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+  produto    Produto    @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([fornecedorId, codigoFornecedor])
+  @@index([empresaId, produtoId])
+  @@index([fornecedorId, eanFornecedor])
+  @@map("crm_fornecedor_produto_map")
+}
+
+model FornecedorPrecoAtual {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int
+  fornecedorId      Int
+  produtoId         Int
+  preco             Float
+  estoqueFornecedor Float?
+  multiplo          Float?
+  embalagem         String?
+  laboratorio       String?
+  importacaoLinhaId Int?     @unique
+  vigenteDesde      DateTime @default(now())
+  atualizadoEm      DateTime @updatedAt
+
+  empresa     Empresa                    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  fornecedor  Fornecedor                 @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+  produto     Produto                     @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  linhaOrigem FornecedorImportacaoLinha? @relation(fields: [importacaoLinhaId], references: [id], onDelete: SetNull)
+
+  @@unique([fornecedorId, produtoId])
+  @@index([empresaId, produtoId])
+  @@map("crm_fornecedor_preco_atual")
+}
+
+model FornecedorPrecoHistorico {
+  id                Int      @id @default(autoincrement())
+  empresaId         Int
+  fornecedorId      Int
+  produtoId         Int
+  preco             Float
+  importacaoId      Int?
+  importacaoLinhaId Int?
+  registradoEm      DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([fornecedorId, produtoId, registradoEm])
+  @@index([produtoId, registradoEm])
+  @@map("crm_fornecedor_preco_historico")
+}
+
+model CompraConfigEmpresa {
+  id                   Int                @id @default(autoincrement())
+  empresaId            Int                @unique
+  multiplicadorConsumo Float              @default(3)
+  diasJanelaConsumo    Int                @default(90)
+  fonteConsumo         FonteConsumoCompra @default(MOVIMENTACAO_ESTOQUE)
+  updatedAt            DateTime           @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@map("crm_compra_config_empresa")
+}
+
+model SugestaoCompra {
+  id                Int                  @id @default(autoincrement())
+  empresaId         Int
+  numero            String
+  status            StatusSugestaoCompra @default(RASCUNHO)
+  geradaPorUserId   Int
+  aprovadaPorUserId Int?
+  observacoes       String?
+  criadoEm          DateTime             @default(now())
+  atualizadoEm      DateTime             @updatedAt
+
+  empresa Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  itens   SugestaoCompraItem[]
+  cotacao CotacaoCompra?
+
+  @@unique([empresaId, numero])
+  @@map("crm_sugestao_compra")
+}
+
+model SugestaoCompraItem {
+  id                 Int     @id @default(autoincrement())
+  sugestaoId         Int
+  produtoId          Int
+  estoqueAtual       Float
+  mediaConsumo       Float
+  quantidadeSugerida Float
+  quantidadeAjustada Float?
+  incluir            Boolean @default(true)
+
+  sugestao SugestaoCompra @relation(fields: [sugestaoId], references: [id], onDelete: Cascade)
+  produto  Produto        @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([sugestaoId, produtoId])
+  @@map("crm_sugestao_compra_itens")
+}
+
+model CotacaoCompra {
+  id              Int                 @id @default(autoincrement())
+  empresaId       Int
+  sugestaoId      Int?                @unique
+  numero          String
+  titulo          String?
+  status          StatusCotacaoCompra @default(RASCUNHO)
+  prazoResposta   DateTime?
+  criadoPorUserId Int
+  fechadaEm       DateTime?
+  criadoEm        DateTime            @default(now())
+  atualizadoEm    DateTime            @updatedAt
+
+  empresa       Empresa                   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  sugestao      SugestaoCompra?           @relation(fields: [sugestaoId], references: [id], onDelete: SetNull)
+  itens         CotacaoCompraItem[]
+  fornecedores  CotacaoCompraFornecedor[]
+  escolhas      CotacaoCompraEscolha[]
+  pedidosCompra PedidoCompra[]
+
+  @@unique([empresaId, numero])
+  @@map("crm_cotacao_compra")
+}
+
+model CotacaoCompraItem {
+  id         Int     @id @default(autoincrement())
+  cotacaoId  Int
+  produtoId  Int
+  quantidade Float
+  descricao  String?
+  unidade    String  @default("UN")
+
+  cotacao   CotacaoCompra               @relation(fields: [cotacaoId], references: [id], onDelete: Cascade)
+  produto   Produto                     @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  respostas CotacaoCompraRespostaItem[]
+  escolha   CotacaoCompraEscolha?
+
+  @@unique([cotacaoId, produtoId])
+  @@map("crm_cotacao_compra_itens")
+}
+
+model CotacaoCompraFornecedor {
+  id            Int                     @id @default(autoincrement())
+  cotacaoId     Int
+  fornecedorId  Int
+  tokenHash     String                  @unique
+  tokenPrefix   String
+  status        StatusCotacaoFornecedor @default(PENDENTE)
+  emailConvite  String?
+  respondidoEm  DateTime?
+  bloqueadoEm   DateTime?
+  visualizadoEm DateTime?
+  criadoEm      DateTime                @default(now())
+
+  cotacao    CotacaoCompra               @relation(fields: [cotacaoId], references: [id], onDelete: Cascade)
+  fornecedor Fornecedor                  @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+  respostas  CotacaoCompraRespostaItem[]
+
+  @@unique([cotacaoId, fornecedorId])
+  @@map("crm_cotacao_compra_fornecedores")
+}
+
+model CotacaoCompraRespostaItem {
+  id                   Int      @id @default(autoincrement())
+  cotacaoFornecedorId  Int
+  cotacaoItemId        Int
+  precoUnitario        Float?
+  prazoEntregaDias     Int?
+  quantidadeDisponivel Float?
+  observacao           String?
+  bloqueado            Boolean  @default(false)
+  respondidoEm         DateTime @default(now())
+
+  cotacaoFornecedor CotacaoCompraFornecedor @relation(fields: [cotacaoFornecedorId], references: [id], onDelete: Cascade)
+  cotacaoItem       CotacaoCompraItem       @relation(fields: [cotacaoItemId], references: [id], onDelete: Cascade)
+  escolha           CotacaoCompraEscolha?
+
+  @@unique([cotacaoFornecedorId, cotacaoItemId])
+  @@map("crm_cotacao_compra_resposta_itens")
+}
+
+model CotacaoCompraEscolha {
+  id                 Int      @id @default(autoincrement())
+  cotacaoId          Int
+  cotacaoItemId      Int      @unique
+  fornecedorId       Int
+  respostaItemId     Int      @unique
+  escolhidoPorUserId Int
+  motivo             String?
+  criadoEm           DateTime @default(now())
+
+  cotacao      CotacaoCompra             @relation(fields: [cotacaoId], references: [id], onDelete: Cascade)
+  cotacaoItem  CotacaoCompraItem         @relation(fields: [cotacaoItemId], references: [id], onDelete: Cascade)
+  fornecedor   Fornecedor                @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+  respostaItem CotacaoCompraRespostaItem @relation(fields: [respostaItemId], references: [id], onDelete: Cascade)
+
+  @@map("crm_cotacao_compra_escolhas")
+}
+
+model PedidoCompra {
+  id              Int                @id @default(autoincrement())
+  empresaId       Int
+  fornecedorId    Int
+  cotacaoId       Int?
+  numero          String
+  status          StatusPedidoCompra @default(RASCUNHO)
+  totalGeral      Float              @default(0)
+  observacoes     String?
+  geradoPorUserId Int
+  enviadoEm       DateTime?
+  criadoEm        DateTime           @default(now())
+  atualizadoEm    DateTime           @updatedAt
+
+  empresa    Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  fornecedor Fornecedor         @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+  cotacao    CotacaoCompra?     @relation(fields: [cotacaoId], references: [id], onDelete: SetNull)
+  itens      ItemPedidoCompra[]
+
+  @@unique([empresaId, numero])
+  @@index([fornecedorId])
+  @@map("crm_pedidos_compra")
+}
+
+model ItemPedidoCompra {
+  id             Int     @id @default(autoincrement())
+  pedidoCompraId Int
+  produtoId      Int
+  cotacaoItemId  Int?
+  escolhaId      Int?
+  descricao      String
+  quantidade     Float
+  unidade        String  @default("UN")
+  precoUnitario  Float
+  total          Float
+  observacao     String?
+
+  pedidoCompra PedidoCompra @relation(fields: [pedidoCompraId], references: [id], onDelete: Cascade)
+  produto      Produto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@index([pedidoCompraId])
+  @@map("crm_itens_pedido_compra")
+}
+
+model CompraAuditoria {
+  id         Int                 @id @default(autoincrement())
+  empresaId  Int
+  userId     Int?
+  acao       AcaoAuditoriaCompra
+  entidade   String
+  entidadeId Int
+  detalhes   Json?
+  criadoEm   DateTime            @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId, entidade, entidadeId])
+  @@index([criadoEm])
+  @@map("crm_compra_auditoria")
 }

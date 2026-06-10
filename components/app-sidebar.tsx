@@ -18,6 +18,10 @@ import {
   Package,
   Table2,
   Target,
+  ShoppingCart,
+  FileSpreadsheet,
+  Scale,
+  ClipboardList,
 } from "lucide-react"
 import {
   Sidebar,
@@ -61,6 +65,15 @@ const mainMenuItems = [
     href: "/leads",
     icon: Target,
   },
+]
+
+const comprasMenuItems = [
+  { label: "Importações", href: "/compras/importacoes", icon: FileSpreadsheet },
+  { label: "Comparativo", href: "/compras/comparativo", icon: Scale },
+  { label: "Sugestão de Compra", href: "/compras/sugestoes", icon: ClipboardList },
+  { label: "Cotações", href: "/compras/cotacoes", icon: FileText },
+  { label: "Pedidos de Compra", href: "/compras/pedidos", icon: ShoppingCart },
+  { label: "Auditoria", href: "/compras/auditoria", icon: LineChart },
 ]
 
 const produtoMenuItems = [
@@ -137,6 +150,40 @@ export function AppSidebar() {
                     >
                       <Link href={item.href} className="flex items-center gap-3">
                         <item.icon className="size-[18px]" />
+                        <span>{item.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-2">
+          <SidebarGroupLabel className="text-[10px] font-bold tracking-[0.1em] uppercase text-sidebar-foreground/30 px-4 mt-2">
+            Compras
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="mt-1">
+            <SidebarMenu>
+              {comprasMenuItems.map((item) => {
+                const isActive = pathname.startsWith(item.href)
+                return (
+                  <SidebarMenuItem key={item.href} className="px-2">
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.label}
+                      className={`
+                        my-0.5 h-10 transition-all duration-200 
+                        ${isActive
+                          ? "bg-primary/10 text-primary font-bold hover:bg-primary/15 hover:text-primary shadow-sm"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                        }
+                      `}
+                    >
+                      <Link href={item.href} className="flex items-center gap-3">
+                        <item.icon className={`size-[18px] ${isActive ? "text-primary fill-primary/10" : ""}`} />
                         <span>{item.label}</span>
                       </Link>
                     </SidebarMenuButton>

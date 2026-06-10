@@ -4,7 +4,8 @@ import { AppShell } from "@/components/app-shell"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Search, Plus, Truck } from "lucide-react"
+import Link from "next/link"
+import { Search, Plus, Truck, Settings } from "lucide-react"
 import { useState, useMemo } from "react"
 import { FornecedorFormDialog } from "@/components/fornecedor-form-dialog"
 import { getFornecedores } from "@/lib/actions/fornecedores"
@@ -73,11 +74,13 @@ export default function FornecedoresPage() {
               ) : filtered.map((forn) => (
                 <Card
                   key={forn.id}
-                  className="group hover:shadow-md transition-all cursor-pointer border-border/50 hover:border-primary/30"
-                  onClick={() => handleEdit(forn)}
+                  className="group hover:shadow-md transition-all border-border/50 hover:border-primary/30"
                 >
                   <CardContent className="p-5">
-                    <div className="flex items-start justify-between">
+                    <div
+                      className="flex items-start justify-between cursor-pointer"
+                      onClick={() => handleEdit(forn)}
+                    >
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 rounded-md text-primary">
                           <Truck className="size-5" />
@@ -94,6 +97,12 @@ export default function FornecedoresPage() {
                         </div>
                       </div>
                     </div>
+                    <Button variant="ghost" size="sm" className="mt-3 w-full" asChild>
+                      <Link href={`/fornecedores/${forn.id}/import-config`}>
+                        <Settings className="size-4 mr-2" />
+                        Config. Importação
+                      </Link>
+                    </Button>
                   </CardContent>
                 </Card>
               ))}

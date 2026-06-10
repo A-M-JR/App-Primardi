@@ -1,0 +1,2 @@
+-- Migration: compras_modulo_completo
+-- Applied via prisma db push
