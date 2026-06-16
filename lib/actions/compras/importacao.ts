@@ -19,6 +19,11 @@ import { assertImportacaoEditavel, canManageCompras } from "@/lib/compras/guards
 import { registrarAuditoriaCompra } from "@/lib/compras/auditoria"
 import { executarMatchImportacao } from "./produto-match"
 import { consolidarPrecosImportacao } from "./precos"
+import { parseImportConfig, parseLinhasImportacao, mappedLineToImportJson, toLinhasImportJson } from "@/lib/compras/json-store"
+import type { LinhaImportacaoFornecedorJson } from "@/lib/compras/types"
+import type { ComprasListFiltros } from "@/lib/compras/list-filters"
+import { buildCriadoEmFilter } from "@/lib/compras/list-filters"
+import type { StatusImportacao } from "@prisma/client"
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "compras")
 
@@ -28,16 +33,47 @@ async function ensureUploadDir(empresaId: number) {
   return dir
 }
 
-export async function getImportacoes(requesterId?: number, fornecedorId?: number) {
+async function getConfigInput(fornecedorId: number, empresaId: number): Promise<ImportConfigInput> {
+  const fornecedor = await prisma.fornecedor.findFirst({
+    where: { id: fornecedorId, empresaId },
+    select: { importConfig: true },
+  })
+  const config = parseImportConfig(fornecedor?.importConfig)
+  if (!config) throw new Error("Configure a importação do fornecedor primeiro.")
+  return {
+    tipoArquivo: config.tipoArquivo,
+    nomeAba: config.nomeAba,
+    linhaCabecalho: config.linhaCabecalho,
+    linhaInicioDados: config.linhaInicioDados,
+    delimitadorCsv: config.delimitadorCsv,
+    encoding: config.encoding,
+    campos: config.campos,
+  }
+}
+
+export async function getImportacoes(filtros?: ComprasListFiltros, requesterId?: number) {
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
     : { empresaId: 1, userId: 1, role: "ADMIN" as const }
 
+  const criadoEm = buildCriadoEmFilter(filtros?.dataInicio, filtros?.dataFim)
+  const search = filtros?.search?.trim()
+
   return prisma.fornecedorImportacao.findMany({
     where: {
       empresaId: ctx.empresaId,
-      ...(fornecedorId ? { fornecedorId } : {}),
+      ...(filtros?.fornecedorId ? { fornecedorId: filtros.fornecedorId } : {}),
+      ...(filtros?.status ? { status: filtros.status as StatusImportacao } : {}),
+      ...(criadoEm ? { criadoEm } : {}),
+      ...(search
+        ? {
+            OR: [
+              { nomeArquivo: { contains: search, mode: "insensitive" } },
+              { fornecedor: { razaoSocial: { contains: search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
     },
     include: {
       fornecedor: { select: { id: true, razaoSocial: true } },
@@ -47,23 +83,59 @@ export async function getImportacoes(requesterId?: number, fornecedorId?: number
   })
 }
 
-export async function getImportacaoDetalhe(importacaoId: number, requesterId?: number) {
+export async function getImportacaoDetalhe(
+  importacaoId: number,
+  requesterId?: number,
+  page = 1,
+  limit = 100
+) {
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
     : { empresaId: 1, userId: 1, role: "ADMIN" as const }
 
-  return prisma.fornecedorImportacao.findFirst({
+  const imp = await prisma.fornecedorImportacao.findFirst({
     where: { id: importacaoId, empresaId: ctx.empresaId },
-    include: {
-      fornecedor: true,
-      config: { include: { campos: true } },
-      linhas: {
-        include: { produto: { select: { id: true, codigo: true, nome: true } } },
-        orderBy: { numeroLinha: "asc" },
-      },
-    },
+    include: { fornecedor: true },
   })
+  if (!imp) return null
+
+  const todasLinhas = parseLinhasImportacao(imp.linhas)
+  const total = todasLinhas.length
+  const slice = todasLinhas.slice((page - 1) * limit, page * limit)
+
+  const produtoIds = [...new Set(slice.filter((l) => l.produtoId).map((l) => l.produtoId!))]
+  const produtos = produtoIds.length
+    ? await prisma.produto.findMany({
+        where: { id: { in: produtoIds } },
+        select: { id: true, codigo: true, nome: true },
+      })
+    : []
+  const produtoMap = new Map(produtos.map((p) => [p.id, p]))
+
+  const linhas = slice.map((l) => ({
+    ...l,
+    produto: l.produtoId ? produtoMap.get(l.produtoId) ?? null : null,
+  }))
+
+  const config = parseImportConfig(
+    (
+      await prisma.fornecedor.findFirst({
+        where: { id: imp.fornecedorId },
+        select: { importConfig: true },
+      })
+    )?.importConfig
+  )
+
+  return {
+    ...imp,
+    config,
+    linhas,
+    linhasTotal: total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  }
 }
 
 export async function criarImportacaoFromUpload(params: {
@@ -78,11 +150,7 @@ export async function criarImportacaoFromUpload(params: {
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
-  const config = await prisma.fornecedorImportConfig.findFirst({
-    where: { fornecedorId: params.fornecedorId, empresaId: ctx.empresaId },
-    include: { campos: true },
-  })
-  if (!config) throw new Error("Configure a importação do fornecedor primeiro.")
+  await getConfigInput(params.fornecedorId, ctx.empresaId)
 
   const hash = createHash("sha256").update(params.buffer).digest("hex")
   const dir = await ensureUploadDir(ctx.empresaId)
@@ -93,7 +161,6 @@ export async function criarImportacaoFromUpload(params: {
     data: {
       empresaId: ctx.empresaId,
       fornecedorId: params.fornecedorId,
-      configId: config.id,
       nomeArquivo: params.nomeArquivo,
       hashArquivo: hash,
       importadoPorUserId: ctx.userId,
@@ -115,42 +182,19 @@ export async function criarImportacaoFromUpload(params: {
 }
 
 async function salvarLinhasImportacao(importacaoId: number, mappedLines: MappedLine[]) {
-  await prisma.fornecedorImportacaoLinha.deleteMany({ where: { importacaoId } })
-
+  const linhas: LinhaImportacaoFornecedorJson[] = mappedLines.map(mappedLineToImportJson)
   let validas = 0
   let erros = 0
-
-  for (const mapped of mappedLines) {
-    const hasError = !!mapped.erroMensagem
-    if (hasError) erros++
+  for (const l of linhas) {
+    if (l.status === "ERRO") erros++
     else validas++
-
-    await prisma.fornecedorImportacaoLinha.create({
-      data: {
-        importacaoId,
-        numeroLinha: mapped.numeroLinha,
-        status: hasError ? "ERRO" : "VALIDA",
-        dadosOriginais: mapped.dadosOriginais as object,
-        codigoFornecedor: mapped.codigoFornecedor,
-        ean: mapped.ean,
-        descricao: mapped.descricao,
-        preco: mapped.preco ?? undefined,
-        estoqueFornecedor: mapped.estoqueFornecedor ?? undefined,
-        multiplo: mapped.multiplo ?? undefined,
-        embalagem: mapped.embalagem,
-        observacao: mapped.fornecedorNome
-          ? `[FORN:${mapped.fornecedorNome}] ${mapped.observacao ?? ""}`.trim()
-          : mapped.observacao,
-        laboratorio: mapped.laboratorio,
-        erroMensagem: mapped.erroMensagem,
-      },
-    })
   }
 
   await prisma.fornecedorImportacao.update({
     where: { id: importacaoId },
     data: {
       status: "CONCLUIDA",
+      linhas: toLinhasImportJson(linhas),
       totalLinhas: mappedLines.length,
       linhasValidas: validas,
       linhasErro: erros,
@@ -265,7 +309,6 @@ export async function criarImportacaoMultiFornecedor(params: {
   }
 
   revalidatePath("/compras/importacoes")
-  revalidatePath("/compras/comparativo")
 
   return { resultados, abasDetectadas: configInput.nomeAba, colunas: configInput.campos }
 }
@@ -288,32 +331,13 @@ export async function processarImportacao(
   })
 
   try {
-    const config = await prisma.fornecedorImportConfig.findFirst({
-      where: { fornecedorId: imp.fornecedorId },
-      include: { campos: true },
-    })
-    if (!config) throw new Error("Config de importação não encontrada.")
+    const configInput = await getConfigInput(imp.fornecedorId, ctx.empresaId)
 
     let buffer: Buffer
     if (filePath) {
       buffer = await readFile(filePath)
     } else {
       throw new Error("Arquivo não encontrado. Faça upload novamente.")
-    }
-
-    const configInput: ImportConfigInput = {
-      tipoArquivo: config.tipoArquivo,
-      nomeAba: config.nomeAba,
-      linhaCabecalho: config.linhaCabecalho,
-      linhaInicioDados: config.linhaInicioDados,
-      delimitadorCsv: config.delimitadorCsv,
-      encoding: config.encoding,
-      campos: config.campos.map((c) => ({
-        campo: c.campo,
-        coluna: c.coluna,
-        obrigatorio: c.obrigatorio,
-        transformacao: c.transformacao,
-      })),
     }
 
     const rows = parseImportFile(buffer, configInput)
@@ -351,19 +375,50 @@ export async function cancelarImportacao(importacaoId: number, requesterId?: num
   revalidatePath("/compras/importacoes")
 }
 
+export async function excluirImportacao(importacaoId: number, requesterId?: number) {
+  const ctx = requesterId
+    ? await getRequesterContext(requesterId)
+    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+
+  if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
+
+  const imp = await prisma.fornecedorImportacao.findFirst({
+    where: { id: importacaoId, empresaId: ctx.empresaId },
+  })
+  if (!imp) throw new Error("Importação não encontrada.")
+
+  const planejamentos = await prisma.planejamentoCompra.findMany({
+    where: { empresaId: ctx.empresaId, importacaoIds: { has: importacaoId } },
+    select: { id: true, importacaoIds: true },
+  })
+
+  for (const p of planejamentos) {
+    await prisma.planejamentoCompra.update({
+      where: { id: p.id },
+      data: { importacaoIds: p.importacaoIds.filter((id) => id !== importacaoId) },
+    })
+    revalidatePath(`/compras/planejamentos/${p.id}`)
+  }
+
+  await prisma.fornecedorImportacao.delete({ where: { id: importacaoId } })
+
+  revalidatePath("/compras/importacoes")
+  revalidatePath(`/compras/importacoes/${importacaoId}`)
+  return { ok: true }
+}
+
 export async function getLinhasPendentesMatch(importacaoId: number, requesterId?: number) {
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
     : { empresaId: 1, userId: 1, role: "ADMIN" as const }
 
-  return prisma.fornecedorImportacaoLinha.findMany({
-    where: {
-      importacaoId,
-      status: { in: ["VALIDA", "PENDENTE"] },
-      produtoId: null,
-      importacao: { empresaId: ctx.empresaId },
-    },
-    orderBy: { numeroLinha: "asc" },
+  const imp = await prisma.fornecedorImportacao.findFirst({
+    where: { id: importacaoId, empresaId: ctx.empresaId },
   })
+  if (!imp) return []
+
+  return parseLinhasImportacao(imp.linhas).filter(
+    (l) => (l.status === "VALIDA" || l.status === "PENDENTE") && !l.produtoId
+  )
 }

@@ -20,7 +20,6 @@ import {
   Target,
   ShoppingCart,
   FileSpreadsheet,
-  Scale,
   ClipboardList,
 } from "lucide-react"
 import {
@@ -37,6 +36,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/lib/auth-context"
 import { useAI } from "@/lib/ai-context"
+import { canAccessComprasModule } from "@/lib/compras/module"
 
 const mainMenuItems = [
   {
@@ -68,12 +68,10 @@ const mainMenuItems = [
 ]
 
 const comprasMenuItems = [
+  { label: "Planejamento", href: "/compras/planejamentos", icon: ClipboardList },
   { label: "Importações", href: "/compras/importacoes", icon: FileSpreadsheet },
-  { label: "Comparativo", href: "/compras/comparativo", icon: Scale },
-  { label: "Sugestão de Compra", href: "/compras/sugestoes", icon: ClipboardList },
   { label: "Cotações", href: "/compras/cotacoes", icon: FileText },
   { label: "Pedidos de Compra", href: "/compras/pedidos", icon: ShoppingCart },
-  { label: "Auditoria", href: "/compras/auditoria", icon: LineChart },
 ]
 
 const produtoMenuItems = [
@@ -107,6 +105,7 @@ const produtoMenuItems = [
 export function AppSidebar() {
   const pathname = usePathname()
   const { currentUser, isAdmin, logout } = useAuth()
+  const showCompras = canAccessComprasModule(currentUser?.role)
   const { isActive: isAIActive } = useAI()
 
   return (
@@ -160,6 +159,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {showCompras && (
         <SidebarGroup className="mt-2">
           <SidebarGroupLabel className="text-[10px] font-bold tracking-[0.1em] uppercase text-sidebar-foreground/30 px-4 mt-2">
             Compras
@@ -193,6 +193,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
         <SidebarGroup className="mt-2">
           <SidebarGroupLabel className="text-[10px] font-bold tracking-[0.1em] uppercase text-sidebar-foreground/30 px-4 mt-2">

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import type { StatusPedidoCompra } from "@prisma/client"
+import { CompraHistorico } from "@/components/compras/compra-historico"
 
 export default function PedidoCompraDetalhePage({
   params,
@@ -104,6 +105,8 @@ export default function PedidoCompraDetalhePage({
             </tfoot>
           </table>
         </div>
+
+        <CompraHistorico contexto="pedido" id={pedidoId} />
       </div>
     </AppShell>
   )

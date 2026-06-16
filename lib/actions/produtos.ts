@@ -2,38 +2,127 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_noStore as noStore } from "next/cache"
+import type { Prisma } from "@prisma/client"
+
+const PRODUTOS_PAGE_SIZE = 20
+
+function mapProduto(e: {
+  id: number
+  empresaId: number
+  codigo: string
+  nome: string
+  descricao: string | null
+  fornecedorId: number | null
+  ean: string | null
+  estoque: number
+  precoBase: number
+  categoriaId: number | null
+  unidadePadrao: string
+  ativo: boolean
+  criadoEm: Date
+  updatedAt: Date
+  clientesAutorizados?: {
+    clienteId: number
+    cliente: { id: number; razaoSocial: string }
+    preco?: number | null
+  }[]
+  tabelasPreco?: { tabelaPrecoId: number; preco: number }[]
+}) {
+  return {
+    ...e,
+    criadoEm: e.criadoEm.toISOString(),
+    updatedAt: e.updatedAt.toISOString(),
+    clientesIds: e.clientesAutorizados?.map((ca) => ca.clienteId) ?? [],
+    clientesVinculados:
+      e.clientesAutorizados?.map((ca) => ({
+        id: ca.clienteId,
+        razaoSocial: ca.cliente.razaoSocial,
+        preco: ca.preco ?? null,
+      })) ?? [],
+  }
+}
+
+export async function getProdutosPaginated(params: {
+  page?: number
+  limit?: number
+  search?: string
+  empresaId?: number
+} = {}) {
+  noStore()
+  const page = Math.max(1, params.page || 1)
+  const limit = params.limit || PRODUTOS_PAGE_SIZE
+  const empresaId = params.empresaId || 1
+  const search = params.search?.trim() || ""
+
+  const where: Prisma.ProdutoWhereInput = {
+    empresaId,
+    ativo: true,
+  }
+
+  if (search) {
+    where.OR = [
+      { nome: { contains: search, mode: "insensitive" } },
+      { codigo: { contains: search, mode: "insensitive" } },
+      { ean: { contains: search, mode: "insensitive" } },
+    ]
+  }
+
+  const [total, produtos] = await prisma.$transaction([
+    prisma.produto.count({ where }),
+    prisma.produto.findMany({
+      where,
+      orderBy: { id: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        empresaId: true,
+        codigo: true,
+        nome: true,
+        descricao: true,
+        fornecedorId: true,
+        ean: true,
+        estoque: true,
+        precoBase: true,
+        categoriaId: true,
+        unidadePadrao: true,
+        ativo: true,
+        criadoEm: true,
+        updatedAt: true,
+      },
+    }),
+  ])
+
+  return {
+    data: produtos.map((p) => mapProduto(p)),
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  }
+}
 
 export async function getProdutos() {
   const dbProdutos = await prisma.produto.findMany({
-    orderBy: { id: "desc" }, // Most recent first
+    orderBy: { id: "desc" },
     include: {
       clientesAutorizados: {
         include: {
           cliente: {
-            select: { id: true, razaoSocial: true }
-          }
-        }
+            select: { id: true, razaoSocial: true },
+          },
+        },
       },
       tabelasPreco: {
         select: {
           tabelaPrecoId: true,
-          preco: true
-        }
-      }
-    }
+          preco: true,
+        },
+      },
+    },
   })
-  
-  return dbProdutos.map(e => ({
-    ...e,
-    criadoEm: e.criadoEm.toISOString(),
-    updatedAt: e.updatedAt.toISOString(),
-    clientesIds: e.clientesAutorizados.map(ca => ca.clienteId),
-    clientesVinculados: e.clientesAutorizados.map(ca => ({
-      id: ca.clienteId,
-      razaoSocial: ca.cliente.razaoSocial,
-      preco: (ca as any).preco
-    }))
-  }))
+
+  return dbProdutos.map((e) => mapProduto(e))
 }
 
 export async function getNextProdutoCode() {

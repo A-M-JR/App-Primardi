@@ -2,49 +2,132 @@
 
 import { AppShell } from "@/components/app-shell"
 import { getCotacoesCompra } from "@/lib/actions/compras/cotacao"
+import { getFornecedores } from "@/lib/actions/fornecedores"
 import { useAuth } from "@/lib/auth-context"
 import { useDataQuery } from "@/hooks/use-data-query"
+import { useComprasListFiltros } from "@/hooks/use-compras-list-filtros"
 import Link from "next/link"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Eye } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { ComprasPageHeader } from "@/components/compras/compras-page-header"
+import { ComprasListFiltros } from "@/components/compras/compras-list-filtros"
+import { STATUS_COTACAO_OPTS, labelStatus } from "@/lib/compras/list-filters"
 
 export default function CotacoesPage() {
   const { currentUser } = useAuth()
+  const {
+    search,
+    setSearch,
+    status,
+    setStatus,
+    fornecedorId,
+    setFornecedorId,
+    dateRange,
+    setDateRange,
+    filtros,
+    hasActiveFilters,
+    clearFilters,
+  } = useComprasListFiltros()
 
   const { data: cotacoes } = useDataQuery({
-    key: "cotacoes-compra",
-    fetcher: () => getCotacoesCompra(currentUser?.id),
+    key: `cotacoes-compra-${JSON.stringify(filtros)}`,
+    fetcher: () => getCotacoesCompra(filtros, currentUser?.id),
+  })
+
+  const { data: fornecedores } = useDataQuery({
+    key: "fornecedores-cotacoes",
+    fetcher: () => getFornecedores(currentUser?.id),
   })
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-8">
-        <div>
-          <h1 className="text-3xl font-bold">Cotações</h1>
-          <p className="text-muted-foreground text-sm mt-1">Cotações competitivas com fornecedores</p>
-        </div>
+      <div className="flex flex-col gap-6">
+        <ComprasPageHeader
+          title="Cotações"
+          description="Cotações competitivas geradas a partir do planejamento"
+        />
 
-        <Card>
-          <CardHeader><h2 className="font-semibold">Lista</h2></CardHeader>
-          <CardContent className="space-y-2">
-            {cotacoes?.map((c) => (
-              <Link
-                key={c.id}
-                href={`/compras/cotacoes/${c.id}`}
-                className="flex justify-between p-3 border rounded-lg hover:bg-muted/50"
-              >
-                <div>
-                  <p className="font-medium">{c.numero}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {c._count.itens} itens — {c.fornecedores.length} fornecedores
-                  </p>
-                </div>
-                <Badge>{c.status}</Badge>
-              </Link>
-            ))}
-            {!cotacoes?.length && (
-              <p className="text-center text-muted-foreground py-8">Nenhuma cotação.</p>
-            )}
+        <Card className="shadow-sm border-border/50 overflow-hidden">
+          <ComprasListFiltros
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Buscar por número..."
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            status={status}
+            onStatusChange={setStatus}
+            statusOptions={STATUS_COTACAO_OPTS}
+            fornecedorId={fornecedorId}
+            onFornecedorChange={setFornecedorId}
+            fornecedores={fornecedores}
+            hasActiveFilters={hasActiveFilters}
+            onClear={clearFilters}
+          />
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  <TableRow>
+                    <TableHead>Cotação</TableHead>
+                    <TableHead className="hidden md:table-cell">Itens</TableHead>
+                    <TableHead className="hidden sm:table-cell">Fornecedores</TableHead>
+                    <TableHead className="hidden lg:table-cell">Criada em</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right w-20">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cotacoes?.map((c) => (
+                    <TableRow key={c.id} className="hover:bg-muted/30">
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{c.titulo || c.numero}</p>
+                          <p className="text-xs text-muted-foreground">{c.numero}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell tabular-nums">
+                        {c._count.itens}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell tabular-nums">
+                        {c.fornecedores.length}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
+                        {new Date(c.criadoEm).toLocaleDateString("pt-BR")}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {labelStatus(c.status, STATUS_COTACAO_OPTS)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" asChild>
+                          <Link href={`/compras/cotacoes/${c.id}`}>
+                            <Eye className="size-4" />
+                          </Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!cotacoes?.length && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                        Nenhuma cotação encontrada.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

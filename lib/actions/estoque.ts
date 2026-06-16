@@ -2,20 +2,59 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import type { Prisma } from "@prisma/client"
 
-export async function getEstoqueProdutos() {
-  const produtos = await prisma.produto.findMany({
-    orderBy: { nome: "asc" },
-    select: {
-      id: true,
-      codigo: true,
-      nome: true,
-      ean: true,
-      estoque: true,
-      unidadePadrao: true,
-    }
-  })
-  return produtos
+const ESTOQUE_PAGE_SIZE = 20
+
+export async function getEstoqueProdutos(params: {
+  page?: number
+  limit?: number
+  search?: string
+  empresaId?: number
+} = {}) {
+  const page = Math.max(1, params.page || 1)
+  const limit = params.limit || ESTOQUE_PAGE_SIZE
+  const empresaId = params.empresaId || 1
+  const search = params.search?.trim() || ""
+
+  const where: Prisma.ProdutoWhereInput = {
+    empresaId,
+    ativo: true,
+  }
+
+  if (search) {
+    where.OR = [
+      { nome: { contains: search, mode: "insensitive" } },
+      { codigo: { contains: search, mode: "insensitive" } },
+      { ean: { contains: search, mode: "insensitive" } },
+    ]
+  }
+
+  const [total, produtos] = await prisma.$transaction([
+    prisma.produto.count({ where }),
+    prisma.produto.findMany({
+      where,
+      orderBy: { nome: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+      select: {
+        id: true,
+        codigo: true,
+        nome: true,
+        ean: true,
+        estoque: true,
+        unidadePadrao: true,
+      },
+    }),
+  ])
+
+  return {
+    data: produtos,
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  }
 }
 
 export async function getMovimentacoesEstoque(produtoId?: number) {

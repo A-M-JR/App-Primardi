@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx"
 import Papa from "papaparse"
-import type { CampoImportacaoFornecedor, TipoArquivoImportacao } from "@prisma/client"
+import type { CampoImportacaoFornecedor, TipoArquivoImportacao } from "./types"
 import { applyTransform, parseMoney, parseNumber } from "./normalize-text"
 
 export type ImportCampoConfig = {

@@ -3,6 +3,7 @@ import {
   criarImportacaoFromUpload,
   criarImportacaoMultiFornecedor,
 } from "@/lib/actions/compras/importacao"
+import { vincularImportacoesAoPlanejamento } from "@/lib/actions/compras/planejamento"
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,6 +13,7 @@ export async function POST(req: NextRequest) {
     const requesterId = parseInt(String(formData.get("requesterId") || "1"), 10)
     const multiFornecedor = formData.get("multiFornecedor") === "true"
     const nomeAba = String(formData.get("nomeAba") || "") || undefined
+    const planejamentoId = parseInt(String(formData.get("planejamentoId") || ""), 10)
 
     if (!file) {
       return NextResponse.json({ error: "Arquivo obrigatório." }, { status: 400 })
@@ -26,6 +28,16 @@ export async function POST(req: NextRequest) {
         requesterId,
         nomeAba,
       })
+
+      if (planejamentoId) {
+        const ids = result.resultados
+          .filter((r) => r.importacaoId)
+          .map((r) => r.importacaoId!)
+        if (ids.length) {
+          await vincularImportacoesAoPlanejamento(planejamentoId, ids, requesterId)
+        }
+      }
+
       return NextResponse.json(result, { status: 201 })
     }
 
@@ -39,6 +51,10 @@ export async function POST(req: NextRequest) {
       buffer,
       requesterId,
     })
+
+    if (planejamentoId && importacao.id) {
+      await vincularImportacoesAoPlanejamento(planejamentoId, [importacao.id], requesterId)
+    }
 
     return NextResponse.json(importacao, { status: 201 })
   } catch (e) {

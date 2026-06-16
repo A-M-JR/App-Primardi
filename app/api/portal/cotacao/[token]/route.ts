@@ -14,6 +14,18 @@ export async function GET(
 
   return NextResponse.json({
     fornecedor: data.fornecedor.razaoSocial,
+    empresa: data.cotacao.empresa
+      ? {
+          nome: data.cotacao.empresa.nomeFantasia || data.cotacao.empresa.razaoSocial,
+          razaoSocial: data.cotacao.empresa.razaoSocial,
+          logoUrl: data.cotacao.empresa.logoUrl,
+          corPrimaria: data.cotacao.empresa.corPrimaria,
+          telefone: data.cotacao.empresa.telefone,
+          email: data.cotacao.empresa.email,
+          cidade: data.cotacao.empresa.cidade,
+          estado: data.cotacao.empresa.estado,
+        }
+      : null,
     cotacao: {
       numero: data.cotacao.numero,
       titulo: data.cotacao.titulo,

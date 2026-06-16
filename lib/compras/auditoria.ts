@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import type { AcaoAuditoriaCompra } from "@prisma/client"
+import type { AcaoAuditoriaCompra, Prisma } from "@prisma/client"
 
 export async function registrarAuditoriaCompra(params: {
   empresaId: number
@@ -16,7 +16,7 @@ export async function registrarAuditoriaCompra(params: {
       acao: params.acao,
       entidade: params.entidade,
       entidadeId: params.entidadeId,
-      detalhes: params.detalhes ?? undefined,
+      detalhes: (params.detalhes ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   })
 }
@@ -34,5 +34,22 @@ export async function getAuditoriaCompra(
     include: { user: { select: { id: true, nome: true } } },
     orderBy: { criadoEm: "desc" },
     take: filtros?.limit ?? 100,
+  })
+}
+
+export async function getAuditoriaPorEntidades(
+  empresaId: number,
+  pares: { entidade: string; entidadeId: number }[],
+  limit = 50
+) {
+  if (!pares.length) return []
+  return prisma.compraAuditoria.findMany({
+    where: {
+      empresaId,
+      OR: pares.map((p) => ({ entidade: p.entidade, entidadeId: p.entidadeId })),
+    },
+    include: { user: { select: { id: true, nome: true } } },
+    orderBy: { criadoEm: "desc" },
+    take: limit,
   })
 }

@@ -13,14 +13,36 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
+const PRISMA_SCHEMA_VERSION = "202606141800_compras_json"
 
-const connectionString = process.env.DB_URL_OFFICIAL || process.env.DATABASE_URL;
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool as any);
+const globalForPrisma = global as unknown as {
+  prisma: PrismaClient
+  prismaSchemaVersion?: string
+}
 
-export const prisma =
-  globalForPrisma.prisma ||
-  new PrismaClient({ adapter });
+const connectionString = process.env.DB_URL_OFFICIAL || process.env.DATABASE_URL
+const pool = new Pool({ connectionString })
+const adapter = new PrismaPg(pool as any)
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+function createPrismaClient() {
+  return new PrismaClient({ adapter })
+}
+
+function isStalePrismaClient(client?: PrismaClient): boolean {
+  if (!client) return true
+  if (globalForPrisma.prismaSchemaVersion !== PRISMA_SCHEMA_VERSION) return true
+  const c = client as PrismaClient & Record<string, unknown>
+  return !("estoqueImportacao" in c) || !("planejamentoCompra" in c)
+}
+
+if (process.env.NODE_ENV !== "production" && isStalePrismaClient(globalForPrisma.prisma)) {
+  void globalForPrisma.prisma?.$disconnect()
+  globalForPrisma.prisma = undefined as unknown as PrismaClient
+}
+
+export const prisma = globalForPrisma.prisma || createPrismaClient()
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma
+  globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION
+}

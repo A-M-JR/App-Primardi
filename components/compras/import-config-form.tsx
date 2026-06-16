@@ -20,7 +20,7 @@ import {
 } from "@/lib/actions/compras/import-config"
 import { useAuth } from "@/lib/auth-context"
 import { Plus, Trash2 } from "lucide-react"
-import type { CampoImportacaoFornecedor, TipoArquivoImportacao } from "@prisma/client"
+import type { CampoImportacaoFornecedor, TipoArquivoImportacao } from "@/lib/compras/types"
 
 type Props = { fornecedorId: number; fornecedorNome: string }
 
@@ -61,7 +61,7 @@ export function ImportConfigForm({ fornecedorId, fornecedorNome }: Props) {
             config.campos.map((c) => ({
               campo: c.campo,
               coluna: c.coluna,
-              obrigatorio: c.obrigatorio,
+              obrigatorio: c.obrigatorio ?? false,
             }))
           )
         }

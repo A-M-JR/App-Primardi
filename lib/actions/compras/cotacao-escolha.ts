@@ -5,35 +5,16 @@ import { getRequesterContext } from "../users"
 import { revalidatePath } from "next/cache"
 import { canManageCompras } from "@/lib/compras/guards"
 import { registrarAuditoriaCompra } from "@/lib/compras/auditoria"
+import { parseRespostasCotacao, getRespostaCotacao } from "@/lib/compras/json-store"
+import { getCotacaoCompraById } from "./cotacao"
 
 export async function getMatrizCotacao(cotacaoId: number, requesterId?: number) {
-  const ctx = requesterId
-    ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
-
-  const cotacao = await prisma.cotacaoCompra.findFirst({
-    where: { id: cotacaoId, empresaId: ctx.empresaId },
-    include: {
-      itens: {
-        include: {
-          produto: true,
-          respostas: {
-            include: {
-              cotacaoFornecedor: { include: { fornecedor: true } },
-            },
-          },
-          escolha: { include: { fornecedor: true } },
-        },
-      },
-      fornecedores: { include: { fornecedor: true } },
-    },
-  })
-  return cotacao
+  return getCotacaoCompraById(cotacaoId, requesterId)
 }
 
 export async function escolherFornecedorItem(
   cotacaoItemId: number,
-  respostaItemId: number,
+  cotacaoFornecedorId: number,
   motivo?: string,
   requesterId?: number
 ) {
@@ -43,30 +24,39 @@ export async function escolherFornecedorItem(
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
-  const resposta = await prisma.cotacaoCompraRespostaItem.findFirst({
-    where: { id: respostaItemId },
-    include: {
-      cotacaoFornecedor: true,
-      cotacaoItem: { include: { cotacao: true } },
-    },
+  const cf = await prisma.cotacaoCompraFornecedor.findFirst({
+    where: { id: cotacaoFornecedorId },
+    include: { cotacao: true },
   })
-  if (!resposta || resposta.cotacaoItem.cotacao.empresaId !== ctx.empresaId) {
-    throw new Error("Resposta não encontrada.")
+  const item = await prisma.cotacaoCompraItem.findFirst({
+    where: { id: cotacaoItemId },
+    include: { cotacao: true },
+  })
+  if (!cf || !item || cf.cotacaoId !== item.cotacaoId) {
+    throw new Error("Cotação ou item não encontrado.")
   }
+  if (cf.cotacao.empresaId !== ctx.empresaId) {
+    throw new Error("Sem permissão.")
+  }
+
+  const respostas = parseRespostasCotacao(cf.respostas)
+  const resposta = getRespostaCotacao(respostas, cotacaoItemId)
 
   const escolha = await prisma.cotacaoCompraEscolha.upsert({
     where: { cotacaoItemId },
     create: {
-      cotacaoId: resposta.cotacaoItem.cotacaoId,
+      cotacaoId: item.cotacaoId,
       cotacaoItemId,
-      fornecedorId: resposta.cotacaoFornecedor.fornecedorId,
-      respostaItemId,
+      fornecedorId: cf.fornecedorId,
+      cotacaoFornecedorId,
+      precoUnitario: resposta?.precoUnitario,
       escolhidoPorUserId: ctx.userId,
       motivo,
     },
     update: {
-      fornecedorId: resposta.cotacaoFornecedor.fornecedorId,
-      respostaItemId,
+      fornecedorId: cf.fornecedorId,
+      cotacaoFornecedorId,
+      precoUnitario: resposta?.precoUnitario,
       escolhidoPorUserId: ctx.userId,
       motivo,
     },
@@ -78,10 +68,10 @@ export async function escolherFornecedorItem(
     acao: "ESCOLHER_VENCEDOR",
     entidade: "CotacaoCompraEscolha",
     entidadeId: escolha.id,
-    detalhes: { cotacaoItemId, respostaItemId },
+    detalhes: { cotacaoItemId, cotacaoFornecedorId },
   })
 
-  revalidatePath(`/compras/cotacoes/${resposta.cotacaoItem.cotacaoId}`)
+  revalidatePath(`/compras/cotacoes/${item.cotacaoId}`)
   return escolha
 }
 
@@ -95,13 +85,13 @@ export async function sugerirVencedoresMenorPreco(cotacaoId: number, requesterId
 
   const sugestoes: {
     cotacaoItemId: number
-    respostaItemId: number
+    cotacaoFornecedorId: number
     fornecedor: string
     preco: number
   }[] = []
 
   for (const item of cotacao.itens) {
-    const comPreco = item.respostas.filter(
+    const comPreco = (item.respostas as { cotacaoFornecedorId: number; precoUnitario?: number | null }[]).filter(
       (r) => r.precoUnitario !== null && r.precoUnitario !== undefined
     )
     if (!comPreco.length) continue
@@ -110,8 +100,10 @@ export async function sugerirVencedoresMenorPreco(cotacaoId: number, requesterId
     )
     sugestoes.push({
       cotacaoItemId: item.id,
-      respostaItemId: menor.id,
-      fornecedor: menor.cotacaoFornecedor.fornecedor.razaoSocial,
+      cotacaoFornecedorId: menor.cotacaoFornecedorId,
+      fornecedor:
+        cotacao.fornecedores.find((f) => f.id === menor.cotacaoFornecedorId)?.fornecedor.razaoSocial ??
+        "",
       preco: menor.precoUnitario!,
     })
   }
@@ -122,7 +114,12 @@ export async function sugerirVencedoresMenorPreco(cotacaoId: number, requesterId
 export async function aplicarVencedoresMenorPreco(cotacaoId: number, requesterId?: number) {
   const sugestoes = await sugerirVencedoresMenorPreco(cotacaoId, requesterId)
   for (const s of sugestoes) {
-    await escolherFornecedorItem(s.cotacaoItemId, s.respostaItemId, "Menor preço", requesterId)
+    await escolherFornecedorItem(
+      s.cotacaoItemId,
+      s.cotacaoFornecedorId,
+      "Menor preço",
+      requesterId
+    )
   }
   return { aplicados: sugestoes.length }
 }

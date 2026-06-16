@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import { useState } from "react"
+import { CompraHistorico } from "@/components/compras/compra-historico"
 
 export default function ImportacaoDetalhePage({
   params,
@@ -42,12 +43,12 @@ export default function ImportacaoDetalhePage({
     fetcher: () => getProdutos(),
   })
 
-  async function handleVincular(linhaId: number) {
-    const pid = produtoSel[linhaId]
+  async function handleVincular(numeroLinha: number) {
+    const pid = produtoSel[numeroLinha]
     if (!pid) return toast.error("Selecione um produto.")
-    setVinculando(linhaId)
+    setVinculando(numeroLinha)
     try {
-      await vincularProdutoManual(linhaId, parseInt(pid, 10), currentUser?.id)
+      await vincularProdutoManual(importacaoId, numeroLinha, parseInt(pid, 10), currentUser?.id)
       toast.success("Produto vinculado.")
       refetch()
     } catch (e) {
@@ -91,7 +92,7 @@ export default function ImportacaoDetalhePage({
             </thead>
             <tbody>
               {imp.linhas.map((l) => (
-                <tr key={l.id} className="border-t">
+                <tr key={l.numeroLinha} className="border-t">
                   <td className="p-2">{l.numeroLinha}</td>
                   <td className="p-2">{l.codigoFornecedor}</td>
                   <td className="p-2">{l.ean}</td>
@@ -112,8 +113,8 @@ export default function ImportacaoDetalhePage({
                     {!l.produtoId && l.status === "VALIDA" && (
                       <div className="flex gap-1">
                         <Select
-                          value={produtoSel[l.id] || ""}
-                          onValueChange={(v) => setProdutoSel({ ...produtoSel, [l.id]: v })}
+                          value={produtoSel[l.numeroLinha] || ""}
+                          onValueChange={(v) => setProdutoSel({ ...produtoSel, [l.numeroLinha]: v })}
                         >
                           <SelectTrigger className="w-40 h-8"><SelectValue placeholder="Produto" /></SelectTrigger>
                           <SelectContent>
@@ -126,8 +127,8 @@ export default function ImportacaoDetalhePage({
                         </Select>
                         <Button
                           size="sm"
-                          disabled={vinculando === l.id}
-                          onClick={() => handleVincular(l.id)}
+                          disabled={vinculando === l.numeroLinha}
+                          onClick={() => handleVincular(l.numeroLinha)}
                         >
                           Vincular
                         </Button>
@@ -139,6 +140,12 @@ export default function ImportacaoDetalhePage({
             </tbody>
           </table>
         </div>
+        {imp.totalPages > 1 && (
+          <p className="text-sm text-muted-foreground">
+            Página {imp.page} de {imp.totalPages} ({imp.linhasTotal} linhas)
+          </p>
+        )}
+        <CompraHistorico contexto="importacao" id={importacaoId} />
       </div>
     </AppShell>
   )

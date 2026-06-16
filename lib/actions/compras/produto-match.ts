@@ -6,34 +6,40 @@ import { revalidatePath } from "next/cache"
 import { normalizeText } from "@/lib/compras/normalize-text"
 import { canManageCompras } from "@/lib/compras/guards"
 import { registrarAuditoriaCompra } from "@/lib/compras/auditoria"
-import type { TipoMatchProduto } from "@prisma/client"
+import type { TipoMatchProduto } from "@/lib/compras/types"
+import {
+  parseLinhasImportacao,
+  parsePrecosFornecedor,
+  toLinhasImportJson,
+} from "@/lib/compras/json-store"
 
 async function matchLinha(
   linha: {
-    id: number
-    ean: string | null
-    codigoFornecedor: string | null
-    descricao: string | null
+    ean: string | null | undefined
+    codigoFornecedor: string | null | undefined
+    descricao: string | null | undefined
   },
   fornecedorId: number,
-  empresaId: number
+  empresaId: number,
+  precosCache: Map<number, ReturnType<typeof parsePrecosFornecedor>>
 ): Promise<{ produtoId: number; matchTipo: TipoMatchProduto } | null> {
   if (linha.ean) {
-    const byEan = await prisma.produto.findFirst({
-      where: { empresaId, ean: linha.ean, ativo: true },
-    })
-    if (byEan) return { produtoId: byEan.id, matchTipo: "EAN" }
+    const eanNorm = linha.ean.replace(/\D/g, "")
+    if (eanNorm.length >= 8) {
+      const byEan = await prisma.produto.findFirst({
+        where: { empresaId, ativo: true, ean: eanNorm },
+      })
+      if (byEan) return { produtoId: byEan.id, matchTipo: "EAN" }
+    }
   }
 
   if (linha.codigoFornecedor) {
-    const map = await prisma.fornecedorProdutoMap.findFirst({
-      where: {
-        fornecedorId,
-        codigoFornecedor: linha.codigoFornecedor,
-        ativo: true,
-      },
-    })
-    if (map) return { produtoId: map.produtoId, matchTipo: "CODIGO_FORNECEDOR" }
+    for (const [produtoId, precos] of precosCache) {
+      const entry = precos[String(fornecedorId)]
+      if (entry?.codigoFornecedor === linha.codigoFornecedor) {
+        return { produtoId, matchTipo: "CODIGO_FORNECEDOR" }
+      }
+    }
   }
 
   if (linha.descricao) {
@@ -59,60 +65,52 @@ export async function executarMatchImportacao(importacaoId: number, requesterId?
   })
   if (!imp) throw new Error("Importação não encontrada.")
 
-  const linhas = await prisma.fornecedorImportacaoLinha.findMany({
-    where: { importacaoId, status: "VALIDA" },
+  const linhas = parseLinhasImportacao(imp.linhas)
+  const produtoIds = [
+    ...new Set(linhas.filter((l) => l.produtoId).map((l) => l.produtoId!)),
+  ]
+  const produtosComPrecos = await prisma.produto.findMany({
+    where: { id: { in: produtoIds }, empresaId: ctx.empresaId },
+    select: { id: true, precosFornecedor: true },
   })
+  const precosCache = new Map(
+    produtosComPrecos.map((p) => [p.id, parsePrecosFornecedor(p.precosFornecedor)])
+  )
 
   let vinculadas = 0
+  const atualizadas = [...linhas]
 
-  for (const linha of linhas) {
-    const match = await matchLinha(linha, imp.fornecedorId, ctx.empresaId)
+  for (let i = 0; i < atualizadas.length; i++) {
+    const linha = atualizadas[i]
+    if (linha.status !== "VALIDA") continue
+
+    const match = await matchLinha(
+      {
+        ean: linha.ean,
+        codigoFornecedor: linha.codigoFornecedor,
+        descricao: linha.descricao,
+      },
+      imp.fornecedorId,
+      ctx.empresaId,
+      precosCache
+    )
     if (!match) continue
 
-    await prisma.fornecedorImportacaoLinha.update({
-      where: { id: linha.id },
-      data: {
-        produtoId: match.produtoId,
-        matchTipo: match.matchTipo,
-        status: "VINCULADA",
-      },
-    })
-
-    if (linha.codigoFornecedor) {
-      await prisma.fornecedorProdutoMap.upsert({
-        where: {
-          fornecedorId_codigoFornecedor: {
-            fornecedorId: imp.fornecedorId,
-            codigoFornecedor: linha.codigoFornecedor,
-          },
-        },
-        create: {
-          empresaId: ctx.empresaId,
-          fornecedorId: imp.fornecedorId,
-          produtoId: match.produtoId,
-          codigoFornecedor: linha.codigoFornecedor,
-          eanFornecedor: linha.ean,
-          descricaoFornecedor: linha.descricao,
-          matchTipo: match.matchTipo,
-          confirmadoManual: match.matchTipo === "MANUAL",
-          vinculadoPorUserId: ctx.userId,
-        },
-        update: {
-          produtoId: match.produtoId,
-          eanFornecedor: linha.ean,
-          descricaoFornecedor: linha.descricao,
-          matchTipo: match.matchTipo,
-          ativo: true,
-        },
-      })
+    atualizadas[i] = {
+      ...linha,
+      produtoId: match.produtoId,
+      matchTipo: match.matchTipo,
+      status: "VINCULADA",
     }
-
     vinculadas++
   }
 
   await prisma.fornecedorImportacao.update({
     where: { id: importacaoId },
-    data: { linhasVinculadas: vinculadas },
+    data: {
+      linhas: toLinhasImportJson(atualizadas),
+      linhasVinculadas: vinculadas,
+    },
   })
 
   revalidatePath(`/compras/importacoes/${importacaoId}`)
@@ -120,7 +118,8 @@ export async function executarMatchImportacao(importacaoId: number, requesterId?
 }
 
 export async function vincularProdutoManual(
-  linhaId: number,
+  importacaoId: number,
+  numeroLinha: number,
   produtoId: number,
   requesterId?: number
 ) {
@@ -130,77 +129,42 @@ export async function vincularProdutoManual(
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
-  const linha = await prisma.fornecedorImportacaoLinha.findFirst({
-    where: { id: linhaId },
-    include: { importacao: true },
+  const imp = await prisma.fornecedorImportacao.findFirst({
+    where: { id: importacaoId, empresaId: ctx.empresaId },
   })
-  if (!linha || linha.importacao.empresaId !== ctx.empresaId) {
-    throw new Error("Linha não encontrada.")
-  }
+  if (!imp) throw new Error("Importação não encontrada.")
 
   const produto = await prisma.produto.findFirst({
     where: { id: produtoId, empresaId: ctx.empresaId },
   })
   if (!produto) throw new Error("Produto não encontrado.")
 
-  await prisma.fornecedorImportacaoLinha.update({
-    where: { id: linhaId },
-    data: {
-      produtoId,
-      matchTipo: "MANUAL",
-      status: "VINCULADA",
-    },
-  })
+  const linhas = parseLinhasImportacao(imp.linhas)
+  const idx = linhas.findIndex((l) => l.numeroLinha === numeroLinha)
+  if (idx < 0) throw new Error("Linha não encontrada.")
 
-  if (linha.codigoFornecedor) {
-    await prisma.fornecedorProdutoMap.upsert({
-      where: {
-        fornecedorId_codigoFornecedor: {
-          fornecedorId: linha.importacao.fornecedorId,
-          codigoFornecedor: linha.codigoFornecedor,
-        },
-      },
-      create: {
-        empresaId: ctx.empresaId,
-        fornecedorId: linha.importacao.fornecedorId,
-        produtoId,
-        codigoFornecedor: linha.codigoFornecedor,
-        eanFornecedor: linha.ean,
-        descricaoFornecedor: linha.descricao,
-        matchTipo: "MANUAL",
-        confirmadoManual: true,
-        vinculadoPorUserId: ctx.userId,
-      },
-      update: {
-        produtoId,
-        confirmadoManual: true,
-        matchTipo: "MANUAL",
-        ativo: true,
-        vinculadoPorUserId: ctx.userId,
-      },
-    })
+  const linha = linhas[idx]
+  linhas[idx] = {
+    ...linha,
+    produtoId,
+    matchTipo: "MANUAL",
+    status: "VINCULADA",
   }
+
+  await prisma.fornecedorImportacao.update({
+    where: { id: importacaoId },
+    data: { linhas: toLinhasImportJson(linhas) },
+  })
 
   await registrarAuditoriaCompra({
     empresaId: ctx.empresaId,
     userId: ctx.userId,
     acao: "VINCULAR",
-    entidade: "FornecedorImportacaoLinha",
-    entidadeId: linhaId,
-    detalhes: { produtoId },
+    entidade: "FornecedorImportacao",
+    entidadeId: importacaoId,
+    detalhes: { produtoId, numeroLinha },
   })
 
-  revalidatePath(`/compras/importacoes/${linha.importacaoId}`)
+  revalidatePath(`/compras/importacoes/${importacaoId}`)
   return { ok: true }
-}
-
-export async function desvincularProdutoMap(mapId: number, requesterId?: number) {
-  const ctx = requesterId
-    ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
-
-  await prisma.fornecedorProdutoMap.updateMany({
-    where: { id: mapId, empresaId: ctx.empresaId },
-    data: { ativo: false },
-  })
 }

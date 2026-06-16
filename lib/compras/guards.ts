@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma"
 
+export { canManageCompras, canApproveCompras } from "./permissions"
+
 export async function assertImportacaoEditavel(importacaoId: number, empresaId: number) {
   const imp = await prisma.fornecedorImportacao.findFirst({
     where: { id: importacaoId, empresaId },
@@ -36,12 +38,4 @@ export async function assertCotacaoFornecedorRespondivel(tokenHash: string) {
     throw new Error("Cotação encerrada.")
   }
   return cf
-}
-
-export function canManageCompras(role: string): boolean {
-  return role === "ADMIN" || role === "GERENTE" || role === "OPERADOR"
-}
-
-export function canApproveCompras(role: string): boolean {
-  return role === "ADMIN" || role === "GERENTE"
 }

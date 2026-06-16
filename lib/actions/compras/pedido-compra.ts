@@ -7,26 +7,34 @@ import { revalidatePath } from "next/cache"
 import { canManageCompras } from "@/lib/compras/guards"
 import { registrarAuditoriaCompra } from "@/lib/compras/auditoria"
 import type { StatusPedidoCompra } from "@prisma/client"
+import { nextPedidoCompraNumero } from "./pedido-compra-helpers"
+import type { ComprasListFiltros } from "@/lib/compras/list-filters"
+import { buildCriadoEmFilter } from "@/lib/compras/list-filters"
 
-async function nextPedidoCompraNumero(empresaId: number) {
-  const ano = new Date().getFullYear()
-  const prefix = `PC-${ano}-`
-  const last = await prisma.pedidoCompra.findFirst({
-    where: { empresaId, numero: { startsWith: prefix } },
-    orderBy: { numero: "desc" },
-  })
-  const seq = last ? parseInt(last.numero.split("-").pop() || "0", 10) + 1 : 1
-  return `${prefix}${String(seq).padStart(4, "0")}`
-}
-
-export async function getPedidosCompra(requesterId?: number) {
+export async function getPedidosCompra(filtros?: ComprasListFiltros, requesterId?: number) {
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
     : { empresaId: 1, userId: 1, role: "ADMIN" as const }
 
+  const criadoEm = buildCriadoEmFilter(filtros?.dataInicio, filtros?.dataFim)
+  const search = filtros?.search?.trim()
+
   return prisma.pedidoCompra.findMany({
-    where: { empresaId: ctx.empresaId },
+    where: {
+      empresaId: ctx.empresaId,
+      ...(filtros?.fornecedorId ? { fornecedorId: filtros.fornecedorId } : {}),
+      ...(filtros?.status ? { status: filtros.status as StatusPedidoCompra } : {}),
+      ...(criadoEm ? { criadoEm } : {}),
+      ...(search
+        ? {
+            OR: [
+              { numero: { contains: search, mode: "insensitive" } },
+              { fornecedor: { razaoSocial: { contains: search, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    },
     include: {
       fornecedor: { select: { id: true, razaoSocial: true } },
       _count: { select: { itens: true } },
@@ -61,10 +69,15 @@ export async function gerarPedidosCompraFromCotacao(cotacaoId: number, requester
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
+  const cotacao = await prisma.cotacaoCompra.findFirst({
+    where: { id: cotacaoId, empresaId: ctx.empresaId },
+    select: { planejamentoId: true },
+  })
+  if (!cotacao) throw new Error("Cotação não encontrada.")
+
   const escolhas = await prisma.cotacaoCompraEscolha.findMany({
     where: { cotacaoId },
     include: {
-      respostaItem: true,
       cotacaoItem: { include: { produto: true } },
       fornecedor: true,
     },
@@ -85,7 +98,7 @@ export async function gerarPedidosCompraFromCotacao(cotacaoId: number, requester
     const numero = await nextPedidoCompraNumero(ctx.empresaId)
     let total = 0
     const itensData = items.map((e) => {
-      const preco = e.respostaItem.precoUnitario ?? 0
+      const preco = e.precoUnitario ?? 0
       const qtd = e.cotacaoItem.quantidade
       const itemTotal = preco * qtd
       total += itemTotal
@@ -106,6 +119,7 @@ export async function gerarPedidosCompraFromCotacao(cotacaoId: number, requester
         empresaId: ctx.empresaId,
         fornecedorId,
         cotacaoId,
+        planejamentoId: cotacao.planejamentoId,
         numero,
         status: "RASCUNHO",
         totalGeral: total,
@@ -132,12 +146,12 @@ export async function gerarPedidosCompraFromCotacao(cotacaoId: number, requester
     data: { status: "FECHADA", fechadaEm: new Date() },
   })
 
-  const cotacao = await prisma.cotacaoCompra.findUnique({ where: { id: cotacaoId } })
-  if (cotacao?.sugestaoId) {
-    await prisma.sugestaoCompra.update({
-      where: { id: cotacao.sugestaoId },
-      data: { status: "CONVERTIDA" },
+  if (cotacao.planejamentoId) {
+    await prisma.planejamentoCompra.update({
+      where: { id: cotacao.planejamentoId },
+      data: { status: "CONVERTIDO" },
     })
+    revalidatePath(`/compras/planejamentos/${cotacao.planejamentoId}`)
   }
 
   revalidatePath("/compras/pedidos")
@@ -159,13 +173,27 @@ export async function updatePedidoCompraStatus(
   })
   if (!pedido) throw new Error("Pedido não encontrado.")
 
-  return prisma.pedidoCompra.update({
+  const atualizado = await prisma.pedidoCompra.update({
     where: { id: pedidoId },
     data: {
       status,
       ...(status === "ENVIADO" ? { enviadoEm: new Date() } : {}),
     },
   })
+
+  if (pedido.status !== status) {
+    await registrarAuditoriaCompra({
+      empresaId: ctx.empresaId,
+      userId: ctx.userId,
+      acao: "ALTERAR_STATUS",
+      entidade: "PedidoCompra",
+      entidadeId: pedidoId,
+      detalhes: { de: pedido.status, para: status },
+    })
+  }
+
+  revalidatePath(`/compras/pedidos/${pedidoId}`)
+  return atualizado
 }
 
 export async function getPedidoCompraPdfData(pedidoId: number, requesterId?: number) {

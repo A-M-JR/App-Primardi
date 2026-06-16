@@ -1,37 +1,65 @@
 "use client"
 
 import { AppShell } from "@/components/app-shell"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Search, Package, ArrowDownToLine, ArrowUpFromLine, Activity, Clock } from "lucide-react"
-import { useState, useMemo } from "react"
+import { Search, Package, Activity, Clock, FileSpreadsheet } from "lucide-react"
+import { useState, useMemo, useEffect } from "react"
 import { getEstoqueProdutos } from "@/lib/actions/estoque"
 import { useDataQuery } from "@/hooks/use-data-query"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EstoqueMovimentacaoDialog } from "@/components/estoque-movimentacao-dialog"
 import { EstoqueHistoricoDialog } from "@/components/estoque-historico-dialog"
+import { EstoqueImportDialog } from "@/components/estoque-import-dialog"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from "@/components/ui/pagination"
+
+const PAGE_SIZE = 20
 
 export default function EstoquePage() {
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [page, setPage] = useState(1)
   const [movimentacaoOpen, setMovimentacaoOpen] = useState(false)
   const [historicoOpen, setHistoricoOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [selectedProduto, setSelectedProduto] = useState<any | null>(null)
 
-  const { data: produtosList, isLoading: loading, refetch: revalidate } = useDataQuery<any[]>({
-    key: 'estoque-produtos',
-    fetcher: getEstoqueProdutos
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 400)
+    return () => clearTimeout(handler)
+  }, [search])
+
+  const apiParams = useMemo(
+    () => ({ page, limit: PAGE_SIZE, search: debouncedSearch }),
+    [page, debouncedSearch]
+  )
+
+  const { data: dbData, isLoading: loading, refetch: revalidate } = useDataQuery({
+    key: apiParams,
+    fetcher: () =>
+      getEstoqueProdutos({
+        page,
+        limit: PAGE_SIZE,
+        search: debouncedSearch,
+      }),
   })
 
-  const filtered = useMemo(() => {
-    if (!produtosList) return []
-    return produtosList.filter(e => 
-      e.nome.toLowerCase().includes(search.toLowerCase()) ||
-      e.codigo.toLowerCase().includes(search.toLowerCase()) ||
-      (e.ean && e.ean.includes(search))
-    )
-  }, [produtosList, search])
+  const produtosList = dbData?.data || []
+  const total = dbData?.total || 0
+  const totalPages = dbData?.totalPages || 1
 
   const handleMovimentar = (produto: any) => {
     setSelectedProduto(produto)
@@ -67,6 +95,16 @@ export default function EstoquePage() {
                 className="pl-9 bg-background focus-visible:ring-primary w-full"
               />
             </div>
+            <div className="flex items-center gap-3 shrink-0">
+              {!loading && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {total.toLocaleString("pt-BR")} produto{total !== 1 ? "s" : ""}
+                </span>
+              )}
+              <Button onClick={() => setImportOpen(true)}>
+                <FileSpreadsheet className="size-4 mr-2" /> Importar Planilha
+              </Button>
+            </div>
           </CardHeader>
 
           <CardContent className="p-0">
@@ -83,7 +121,7 @@ export default function EstoquePage() {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
+                    Array.from({ length: PAGE_SIZE }).map((_, i) => (
                       <tr key={i}>
                         <td className="px-6 py-4"><Skeleton className="h-4 w-40" /></td>
                         <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
@@ -92,14 +130,14 @@ export default function EstoquePage() {
                         <td className="px-6 py-4"><Skeleton className="h-8 w-24 ml-auto" /></td>
                       </tr>
                     ))
-                  ) : filtered.length === 0 ? (
+                  ) : produtosList.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
                         <Package className="size-8 mx-auto opacity-20 mb-3" />
                         Nenhum produto encontrado.
                       </td>
                     </tr>
-                  ) : filtered.map(produto => (
+                  ) : produtosList.map(produto => (
                     <tr key={produto.id} className="hover:bg-muted/10 transition-colors group">
                       <td className="px-6 py-4 font-medium text-foreground">
                         {produto.nome}
@@ -124,17 +162,17 @@ export default function EstoquePage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <Button 
-                             variant="outline" 
-                             size="sm" 
+                          <Button
+                             variant="outline"
+                             size="sm"
                              className="group-hover:border-primary/50 transition-colors"
                              onClick={() => handleVerHistorico(produto)}
                           >
                              <Clock className="size-4 mr-2 text-muted-foreground" /> Histórico
                           </Button>
-                          <Button 
-                             variant="outline" 
-                             size="sm" 
+                          <Button
+                             variant="outline"
+                             size="sm"
                              className="group-hover:border-primary/50 transition-colors"
                              onClick={() => handleMovimentar(produto)}
                           >
@@ -147,6 +185,49 @@ export default function EstoquePage() {
                 </tbody>
               </table>
             </div>
+
+            {totalPages > 1 && (
+              <div className="py-4 px-6 border-t border-border/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Página {page} de {totalPages} — exibindo {produtosList.length} de {total.toLocaleString("pt-BR")}
+                </p>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className={page === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        aria-disabled={page === 1}
+                      />
+                    </PaginationItem>
+
+                    {Array.from({ length: totalPages }).map((_, i) => {
+                      const p = i + 1
+                      if (p === 1 || p === totalPages || (p >= page - 1 && p <= page + 1)) {
+                        return (
+                          <PaginationItem key={p}>
+                            <PaginationLink className="cursor-pointer" isActive={page === p} onClick={() => setPage(p)}>
+                              {p}
+                            </PaginationLink>
+                          </PaginationItem>
+                        )
+                      }
+                      if (p === 2 && page > 3) return <PaginationItem key={`ellipsis-start-${p}`}><PaginationEllipsis /></PaginationItem>
+                      if (p === totalPages - 1 && page < totalPages - 2) return <PaginationItem key={`ellipsis-end-${p}`}><PaginationEllipsis /></PaginationItem>
+                      return null
+                    })}
+
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        className={page === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        aria-disabled={page === totalPages}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -162,6 +243,12 @@ export default function EstoquePage() {
         open={historicoOpen}
         onOpenChange={setHistoricoOpen}
         produto={selectedProduto}
+      />
+
+      <EstoqueImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSuccess={() => revalidate()}
       />
     </AppShell>
   )
