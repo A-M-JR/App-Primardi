@@ -13,7 +13,7 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
-const PRISMA_SCHEMA_VERSION = "202606141800_compras_json"
+const PRISMA_SCHEMA_VERSION = "202606172800_chamados"
 
 const globalForPrisma = global as unknown as {
   prisma: PrismaClient
@@ -32,7 +32,20 @@ function isStalePrismaClient(client?: PrismaClient): boolean {
   if (!client) return true
   if (globalForPrisma.prismaSchemaVersion !== PRISMA_SCHEMA_VERSION) return true
   const c = client as PrismaClient & Record<string, unknown>
-  return !("estoqueImportacao" in c) || !("planejamentoCompra" in c)
+  return (
+    !("estoqueImportacao" in c) ||
+    !("planejamentoCompra" in c) ||
+    !("userEmpresa" in c) ||
+    !("devedor" in c) ||
+    !("clienteAtividade" in c) ||
+    !("licitacao" in c) ||
+    !("empenho" in c) ||
+    !("cmed" in c) ||
+    !("consultaApiUsage" in c) ||
+    !("promocao" in c) ||
+    !("chamado" in c) ||
+    !("departamento" in c)
+  )
 }
 
 if (process.env.NODE_ENV !== "production" && isStalePrismaClient(globalForPrisma.prisma)) {

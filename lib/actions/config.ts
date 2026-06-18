@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { AIConfig, Empresa, AIUsage } from "@/lib/types"
 import { unstable_noStore as noStore } from "next/cache"
+import { getRequesterContext, requireMaster, requireMasterOrTI } from "./users"
 
 // Mapping Prisma Empresa to Frontend Empresa
 function mapPrismaToEmpresa(dbEmpresa: any): Empresa {
@@ -54,151 +55,83 @@ function mapEmpresaToPrisma(empresa: Partial<Empresa>) {
   return data
 }
 
+// Retorna a empresa ATIVA da sessão (usada para branding/PDF por qualquer usuário).
 export async function getEmpresa(): Promise<Empresa> {
   noStore()
-  try {
-    let dbEmpresa = await prisma.empresa.findFirst()
-    if (!dbEmpresa) {
-      dbEmpresa = await prisma.empresa.create({
-        data: {
-          razaoSocial: "M F LABELS INDUSTRIA GRAFICA LTDA",
-          nomeFantasia: "Primardi",
-          cnpj: "18.330.143/0001-38",
-          telefone: "(62) 3142-9993",
-          email: "contato@primardi.com",
-          cep: "74474-046",
-          logradouro: "R Jg 17",
-          numero: "S/N",
-          bairro: "Jardim Guanabara II",
-          cidade: "Goiânia",
-          estado: "GO",
-          corSidebar: "#0f264a",
-        },
-      })
-    }
-    return mapPrismaToEmpresa(dbEmpresa)
-  } catch (error) {
-    console.error("Error in getEmpresa:", error)
-    throw error
-  }
+  const ctx = await getRequesterContext()
+  const dbEmpresa = await prisma.empresa.findUnique({ where: { id: ctx.empresaId } })
+  if (!dbEmpresa) throw new Error("Empresa ativa não encontrada.")
+  return mapPrismaToEmpresa(dbEmpresa)
 }
 
+// Atualiza dados cadastrais da empresa ATIVA (MASTER/TI). Não troca de empresa.
 export async function updateEmpresa(empresa: Partial<Empresa>) {
-  try {
-    const dbEmpresa = await prisma.empresa.findFirst()
-    const data = mapEmpresaToPrisma(empresa)
-    
-    if (!dbEmpresa) {
-      return prisma.empresa.create({ data })
-    }
-    
-    return prisma.empresa.update({
-      where: { id: dbEmpresa.id },
-      data,
-    })
-  } catch (error) {
-    console.error("Error in updateEmpresa:", error)
-    throw error
-  }
+  const ctx = await requireMasterOrTI()
+  const data = mapEmpresaToPrisma(empresa)
+  delete (data as any).id
+  delete (data as any).modulosAtivos // módulos só pela tela de Empresas (MASTER)
+  return prisma.empresa.update({ where: { id: ctx.empresaId }, data })
 }
 
+// Config de IA da empresa ATIVA. Leitura por qualquer usuário autenticado (usada no chat).
 export async function getAIConfig(): Promise<AIConfig> {
-  try {
-    let config = await prisma.aIConfig.findFirst()
-    if (!config) {
-      // Busca a empresa para obter o empresaId obrigatório
-      const empresa = await prisma.empresa.findFirst()
-      if (!empresa) throw new Error("Nenhuma empresa cadastrada. Execute o seed primeiro.")
-      config = await prisma.aIConfig.create({
-        data: {
-          empresaId: empresa.id,
-          provider: "gemini-flash",
-          apiKey: "",
-          systemPrompt: "Você é o assistente inteligente da Primardi, focado em ajudar na gestão de orçamentos, pedidos e produtos.",
-          monthlyLimit: 500,
-        },
-      })
-    }
-    return config as unknown as AIConfig
-  } catch (error) {
-    console.error("Error in getAIConfig:", error)
-    throw error
+  const ctx = await getRequesterContext()
+  let config = await prisma.aIConfig.findUnique({ where: { empresaId: ctx.empresaId } })
+  if (!config) {
+    config = await prisma.aIConfig.create({
+      data: {
+        empresaId: ctx.empresaId,
+        provider: "gemini-flash",
+        apiKey: "",
+        systemPrompt: "Você é o assistente inteligente, focado em ajudar na gestão de orçamentos, pedidos e produtos.",
+        monthlyLimit: 500,
+      },
+    })
   }
+  return config as unknown as AIConfig
 }
 
+// Atualiza config de IA (token/contexto) — EXCLUSIVO do MASTER.
 export async function updateAIConfig(data: Partial<AIConfig>) {
-  try {
-    const config = await prisma.aIConfig.findFirst()
-    if (!config) {
-      const empresa = await prisma.empresa.findFirst()
-      if (!empresa) throw new Error("Nenhuma empresa cadastrada. Execute o seed primeiro.")
-      return prisma.aIConfig.create({ 
-        data: {
-          empresaId: empresa.id,
-          provider: data.provider || "gemini-flash",
-          apiKey: data.apiKey || "",
-          systemPrompt: data.systemPrompt || "",
-          monthlyLimit: data.monthlyLimit || 500
-        } 
-      })
-    }
-    return prisma.aIConfig.update({
-      where: { id: config.id },
-      data: data as any,
-    })
-  } catch (error) {
-    console.error("Error in updateAIConfig:", error)
-    throw error
-  }
+  const ctx = await requireMaster()
+  const update: any = {}
+  if (data.provider !== undefined) update.provider = data.provider
+  if (data.apiKey !== undefined) update.apiKey = data.apiKey
+  if (data.systemPrompt !== undefined) update.systemPrompt = data.systemPrompt
+  if (data.monthlyLimit !== undefined) update.monthlyLimit = data.monthlyLimit
+  return prisma.aIConfig.upsert({
+    where: { empresaId: ctx.empresaId },
+    update,
+    create: {
+      empresaId: ctx.empresaId,
+      provider: data.provider || "gemini-flash",
+      apiKey: data.apiKey || "",
+      systemPrompt: data.systemPrompt || "",
+      monthlyLimit: data.monthlyLimit || 500,
+    },
+  })
 }
 
 export async function getAIUsage(): Promise<AIUsage> {
-  try {
-    const empresa = await prisma.empresa.findFirst()
-    if (!empresa) throw new Error("Nenhuma empresa cadastrada.")
-    const monthYear = new Date().toISOString().slice(0, 7)
-    // unique key agora é [empresaId, monthYear]
-    let usage = await prisma.aIUsage.findUnique({
-      where: { empresaId_monthYear: { empresaId: empresa.id, monthYear } }
+  const ctx = await getRequesterContext()
+  const monthYear = new Date().toISOString().slice(0, 7)
+  let usage = await prisma.aIUsage.findUnique({
+    where: { empresaId_monthYear: { empresaId: ctx.empresaId, monthYear } },
+  })
+  if (!usage) {
+    usage = await prisma.aIUsage.create({
+      data: { empresaId: ctx.empresaId, monthYear, count: 0, tokensUsed: 0 },
     })
-    
-    if (!usage) {
-      usage = await prisma.aIUsage.create({
-        data: {
-          empresaId: empresa.id,
-          monthYear,
-          count: 0,
-          tokensUsed: 0
-        }
-      })
-    }
-    return usage as unknown as AIUsage
-  } catch (error) {
-    console.error("Error in getAIUsage:", error)
-    throw error
   }
+  return usage as unknown as AIUsage
 }
 
 export async function incrementAIUsage(tokensUsed: number = 0): Promise<AIUsage> {
-  try {
-    const empresa = await prisma.empresa.findFirst()
-    if (!empresa) throw new Error("Nenhuma empresa cadastrada.")
-    const monthYear = new Date().toISOString().slice(0, 7)
-    return await prisma.aIUsage.upsert({
-      where: { empresaId_monthYear: { empresaId: empresa.id, monthYear } },
-      update: {
-        count: { increment: 1 },
-        tokensUsed: { increment: tokensUsed }
-      },
-      create: {
-        empresaId: empresa.id,
-        monthYear,
-        count: 1,
-        tokensUsed
-      }
-    }) as unknown as AIUsage
-  } catch (error) {
-    console.error("Error in incrementAIUsage:", error)
-    throw error
-  }
+  const ctx = await getRequesterContext()
+  const monthYear = new Date().toISOString().slice(0, 7)
+  return (await prisma.aIUsage.upsert({
+    where: { empresaId_monthYear: { empresaId: ctx.empresaId, monthYear } },
+    update: { count: { increment: 1 }, tokensUsed: { increment: tokensUsed } },
+    create: { empresaId: ctx.empresaId, monthYear, count: 1, tokensUsed },
+  })) as unknown as AIUsage
 }

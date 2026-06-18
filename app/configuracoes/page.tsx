@@ -22,7 +22,9 @@ import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 
 function ConfiguracoesForm() {
-    const { isAdmin, isLoading } = useAuth()
+    const { access, isLoading } = useAuth()
+    // Configurações sensíveis (token/contexto IA, dados da empresa) são exclusivas do MASTER.
+    const isAdmin = access?.nivelAcesso === "MASTER"
     const [empresa, setEmpresa] = useState(empresaDefault)
     const [isSaving, setIsSaving] = useState(false)
     const [isLoadingCnpj, setIsLoadingCnpj] = useState(false)

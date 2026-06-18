@@ -2,8 +2,10 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { getRequesterContext } from "./users"
 
-export async function getTabelasPreco(empresaId = 1) {
+export async function getTabelasPreco() {
+  const { empresaId } = await getRequesterContext()
   const tabelas = await prisma.tabelaPreco.findMany({
     where: { empresaId },
     orderBy: { nome: "asc" },
@@ -44,7 +46,8 @@ export async function getTabelaPrecoById(id: number) {
   }
 }
 
-export async function saveTabelaPreco(data: { id?: number; nome: string; ativo: boolean }, empresaId = 1) {
+export async function saveTabelaPreco(data: { id?: number; nome: string; ativo: boolean }) {
+  const { empresaId } = await getRequesterContext()
   if (data.id) {
     const updated = await prisma.tabelaPreco.update({
       where: { id: data.id },

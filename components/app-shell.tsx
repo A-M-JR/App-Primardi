@@ -15,7 +15,6 @@ import {
 import { usePathname, useRouter } from "next/navigation"
 import { Toaster } from "@/components/ui/sonner"
 import { useAuth } from "@/lib/auth-context"
-import { getEmpresa } from "@/lib/actions/config"
 import { Loader2 } from "lucide-react"
 
 const breadcrumbMap: Record<string, string> = {
@@ -27,15 +26,24 @@ const breadcrumbMap: Record<string, string> = {
   pedidos: "Pedidos de Produção",
   comissoes: "Comissões",
   usuarios: "Usuários",
+  empresas: "Empresas",
   vendedores: "Vendedores",
   configuracoes: "Configurações",
+  licitacoes: "Licitações",
+  faturamento: "Faturamento",
+  promocoes: "Promoções",
+  chamados: "Chamados",
+  departamentos: "Departamentos",
+  consultas: "Consultas (APIs)",
+  "conciliar-ean": "Conciliar EAN",
+  manuais: "Manuais",
   novo: "Novo",
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { currentUser, isLoading } = useAuth()
+  const { currentUser, isLoading, empresaBranding } = useAuth()
   const segments = pathname.split("/").filter(Boolean)
 
   const applyTheme = (savedColor: string) => {
@@ -63,27 +71,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Volta a sidebar ao tema padrão (empresa sem cor personalizada).
+  const resetTheme = () => {
+    document.documentElement.style.removeProperty('--sidebar')
+    document.documentElement.style.removeProperty('--sidebar-border')
+    const sidebarEl = document.querySelector('[data-sidebar="sidebar-inner"]') as HTMLElement | null
+    if (sidebarEl) sidebarEl.style.background = ''
+  }
+
+  // Paint rápido a partir do cache, evitando flash antes do branding carregar.
   useEffect(() => {
-    const savedColor = localStorage.getItem('flexo_theme_sidebar')
-    if (savedColor) {
-      applyTheme(savedColor)
-    }
-
-    // Sincroniza com o banco
-    const syncTheme = async () => {
-      try {
-        const empresa = await getEmpresa()
-        if (empresa.corSidebar && empresa.corSidebar !== savedColor) {
-          applyTheme(empresa.corSidebar)
-          localStorage.setItem('flexo_theme_sidebar', empresa.corSidebar)
-        }
-      } catch (e) {
-        console.error("Erro ao sincronizar tema:", e)
-      }
-    }
-
-    syncTheme()
+    const cached = localStorage.getItem('flexo_theme_sidebar')
+    if (cached) applyTheme(cached)
   }, [])
+
+  // Aplica a identidade visual da empresa ATIVA; reage à troca de empresa.
+  useEffect(() => {
+    if (!empresaBranding) return
+    const cor = empresaBranding.corSidebar
+    if (cor) {
+      applyTheme(cor)
+      localStorage.setItem('flexo_theme_sidebar', cor)
+    } else {
+      localStorage.removeItem('flexo_theme_sidebar')
+      resetTheme()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaBranding?.id, empresaBranding?.corSidebar])
 
   useEffect(() => {
     if (!isLoading && !currentUser) {

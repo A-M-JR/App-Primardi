@@ -1,21 +1,49 @@
 "use client"
 
-import React, { createContext, useContext, useState, useEffect } from "react"
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { User, Vendedor } from "./types"
-import { verifySession } from "./actions/users"
+import { trocarEmpresa as trocarEmpresaAction } from "./actions/users"
+import { can as canModulo, type ModuloId, type Acao, type AccessContext } from "./modules"
 import { clearDataCache } from "@/hooks/use-data-query"
 
 export type LoginResult = "success" | "invalid_credentials" | "user_blocked" | "user_not_found"
 
+export interface EmpresaResumo {
+  id: number
+  nomeFantasia: string
+  razaoSocial: string
+}
+
+export interface EmpresaBranding {
+  id: number
+  nomeFantasia: string
+  logoUrl: string | null
+  corSidebar: string | null
+  corPrimaria: string | null
+}
+
+// Contexto de acesso enriquecido enviado pelo /api/auth/me.
+export type ClientAccess = AccessContext & {
+  isAdmin: boolean
+  vendedorId: number | null
+}
+
 interface AuthContextType {
   currentUser: User | null
   vendedor: Vendedor | null
+  access: ClientAccess | null
+  empresas: EmpresaResumo[]
+  empresaAtivaId: number | null
+  empresaBranding: EmpresaBranding | null
   isAdmin: boolean
   isVendedor: boolean
   isLoading: boolean
   login: (email: string, senha?: string) => Promise<LoginResult>
   logout: () => void
+  trocarEmpresa: (empresaId: number) => Promise<void>
+  refreshSession: () => Promise<void>
+  can: (modulo: ModuloId, acao?: Acao) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -23,47 +51,49 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [vendedor, setVendedor] = useState<Vendedor | null>(null)
+  const [access, setAccess] = useState<ClientAccess | null>(null)
+  const [empresas, setEmpresas] = useState<EmpresaResumo[]>([])
+  const [empresaAtivaId, setEmpresaAtivaId] = useState<number | null>(null)
+  const [empresaBranding, setEmpresaBranding] = useState<EmpresaBranding | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const router = useRouter()
 
-
-  useEffect(() => {
-    checkSession()
-
-    // Configura um vigia que checa a expiração a cada 1 minuto
-    const interval = setInterval(checkSession, 60000)
-    return () => clearInterval(interval)
+  // O cookie httpOnly é a fonte de verdade. /api/auth/me valida assinatura,
+  // expiração e se o usuário continua ativo, e devolve o contexto de acesso.
+  const checkSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { cache: "no-store" })
+      if (res.ok) {
+        const data = await res.json()
+        setCurrentUser(data.user)
+        setVendedor(data.vendor || null)
+        setAccess(data.access || null)
+        setEmpresas(data.empresas || [])
+        setEmpresaAtivaId(data.empresaAtivaId ?? null)
+        setEmpresaBranding(data.empresaAtiva || null)
+      } else {
+        setCurrentUser(null)
+        setVendedor(null)
+        setAccess(null)
+        setEmpresas([])
+        setEmpresaAtivaId(null)
+        setEmpresaBranding(null)
+      }
+    } catch {
+      setCurrentUser(null)
+      setVendedor(null)
+      setAccess(null)
+      setEmpresaBranding(null)
+    }
   }, [])
 
-  const checkSession = async () => {
-    const sessionData = localStorage.getItem("flexo_session")
-
-    if (sessionData) {
-      try {
-        const { userId, expiresAt } = JSON.parse(sessionData)
-
-        // Verifica se a sessão de 12 horas expirou
-        if (Date.now() > expiresAt) {
-          logout()
-          setIsLoading(false)
-          return
-        }
-
-        const result = await verifySession(userId)
-        if (result && result.user) {
-          setCurrentUser(result.user)
-          setVendedor(result.vendor)
-        } else {
-          logout() // Usuário foi deletado ou inativado
-        }
-      } catch (e) {
-        logout() // Objeto corrompido
-      }
-    }
-
-    setIsLoading(false)
-  }
+  useEffect(() => {
+    checkSession().finally(() => setIsLoading(false))
+    // Revalida a sessão a cada 5 minutos (cookie httpOnly expira em 12h).
+    const interval = setInterval(checkSession, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [checkSession])
 
   const login = async (email: string, senha?: string): Promise<LoginResult> => {
     try {
@@ -79,22 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return "invalid_credentials"
       }
 
-      const { user, vendor: dbVendor } = await response.json()
-      setCurrentUser(user)
-
-      // Cria Sessão de 12 Horas em Milissegundos
-      const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000
-      const sessionObject = {
-        userId: user.id,
-        expiresAt: Date.now() + TWELVE_HOURS_MS
-      }
-
-      localStorage.setItem("flexo_session", JSON.stringify(sessionObject))
-
-      // Limpa cache de dados anteriores para a nova sessão
+      // O cookie httpOnly (12h) já foi setado pelo servidor; carrega o contexto.
       clearDataCache()
-
-      setVendedor(dbVendor || null)
+      await checkSession()
       return "success"
     } catch (error) {
       console.error("Login Error:", error)
@@ -102,24 +119,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setCurrentUser(null)
     setVendedor(null)
+    setAccess(null)
+    setEmpresas([])
+    setEmpresaAtivaId(null)
+    setEmpresaBranding(null)
+
+    // Remove o cookie de sessão no servidor.
+    fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+
+    // Limpa resíduos antigos do esquema localStorage (transição).
     localStorage.removeItem("flexo_session")
-    // O legacy identifier se existir
     localStorage.removeItem("currentUserId")
-    
-    // Limpa cache ao sair também por segurança
     clearDataCache()
 
     router.push("/login")
-  }
+  }, [router])
 
-  const isAdmin = currentUser?.role === "ADMIN"
-  const isVendedor = currentUser?.role === "VENDEDOR"
+  const trocarEmpresa = useCallback(
+    async (empresaId: number) => {
+      await trocarEmpresaAction(empresaId)
+      clearDataCache()
+      await checkSession()
+      router.refresh()
+    },
+    [checkSession, router]
+  )
+
+  const can = useCallback(
+    (modulo: ModuloId, acao: Acao = "view") => {
+      if (!access) return false
+      return canModulo(access, modulo, acao)
+    },
+    [access]
+  )
+
+  const isAdmin = access?.isAdmin ?? false
+  const isVendedor = !!access?.vendedorId
 
   return (
-    <AuthContext.Provider value={{ currentUser, vendedor, isAdmin, isVendedor, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        currentUser,
+        vendedor,
+        access,
+        empresas,
+        empresaAtivaId,
+        empresaBranding,
+        isAdmin,
+        isVendedor,
+        isLoading,
+        login,
+        logout,
+        trocarEmpresa,
+        refreshSession: checkSession,
+        can,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

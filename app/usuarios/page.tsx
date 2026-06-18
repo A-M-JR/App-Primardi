@@ -8,8 +8,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { getUsers, saveUser, toggleUserActive, updateUserPassword } from "@/lib/actions/users"
-import { getVendedores } from "@/lib/actions/vendedores"
+import { getUsers, toggleUserActive, updateUserPassword } from "@/lib/actions/users"
+import { listarEmpresas } from "@/lib/actions/empresas"
+import { getVendedoresParaVinculo } from "@/lib/actions/vendedores"
+import type { EmpresaParaVinculo } from "@/components/usuario-form-dialog"
 import { UsuarioFormDialog } from "@/components/usuario-form-dialog"
 import { AppShell } from "@/components/app-shell"
 import { toast } from "sonner"
@@ -19,9 +21,11 @@ import { useAuth } from "@/lib/auth-context"
 import { User, Vendedor } from "@/lib/types"
 
 export default function UsuariosPage() {
-  const { isAdmin, isLoading: isAuthLoading } = useAuth()
+  const { access, isLoading: isAuthLoading } = useAuth()
+  const podeAdministrar = access?.nivelAcesso === "MASTER" || access?.nivelAcesso === "TI"
   const [usuariosList, setUsuariosList] = useState<User[]>([])
   const [vendedoresList, setVendedoresList] = useState<Vendedor[]>([])
+  const [empresasList, setEmpresasList] = useState<EmpresaParaVinculo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingUsuario, setEditingUsuario] = useState<User | null>(null)
@@ -37,16 +41,18 @@ export default function UsuariosPage() {
   const loadData = async () => {
     setIsLoading(true)
     try {
-      const [usersRes, vendorsData] = await Promise.all([
+      const [usersRes, vendorsData, empresasData] = await Promise.all([
         getUsers({ search, status: fStatusFilter }),
-        getVendedores({ mode: 'dropdown' })
+        getVendedoresParaVinculo(),
+        listarEmpresas(),
       ])
-      
+
       if (usersRes && 'data' in usersRes) {
         setUsuariosList(usersRes.data as any)
         setKpis(usersRes.kpis || { total: 0, ativos: 0, bloqueados: 0 })
       }
       setVendedoresList(vendorsData as any)
+      setEmpresasList(empresasData as unknown as EmpresaParaVinculo[])
     } catch (error) {
       console.error("Erro ao carregar dados:", error)
       toast.error("Erro ao carregar dados do banco.")
@@ -69,7 +75,7 @@ export default function UsuariosPage() {
     return <AppShell><div className="p-8"><Skeleton className="h-40 w-full" /></div></AppShell>
   }
 
-  if (!isAdmin) {
+  if (!podeAdministrar) {
     return (
       <AppShell>
         <div className="flex flex-col items-center justify-center py-20 gap-4 animate-in fade-in duration-200">
@@ -89,19 +95,6 @@ export default function UsuariosPage() {
         </div>
       </AppShell>
     )
-  }
-
-  const handleSaveUsuario = async (usuario: User) => {
-    try {
-      await saveUser(usuario)
-      await loadData()
-      toast.success(editingUsuario ? "Usuário atualizado" : "Usuário cadastrado")
-      setEditingUsuario(null)
-      setShowForm(false)
-    } catch (error) {
-      console.error("Erro ao salvar usuário:", error)
-      toast.error("Erro ao salvar no banco de dados.")
-    }
   }
 
   const handleToggleActive = (id: number, currentStatus: boolean, nome: string) => {
@@ -227,8 +220,13 @@ export default function UsuariosPage() {
         {showForm && (
           <UsuarioFormDialog
             usuario={editingUsuario}
+            empresas={empresasList}
             vendedores={vendedoresList}
-            onSave={handleSaveUsuario}
+            onSaved={async () => {
+              await loadData()
+              setShowForm(false)
+              setEditingUsuario(null)
+            }}
             onClose={() => {
               setShowForm(false)
               setEditingUsuario(null)

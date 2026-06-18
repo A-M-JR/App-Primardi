@@ -11,12 +11,13 @@ export async function getOportunidadesData(vendedorIdParam?: number, requesterId
     const sessentaDiasAtras = new Date(today.getTime() - (60 * 24 * 60 * 60 * 1000))
 
     let vendedorId = vendedorIdParam
-    let empresaId = 1 // Default fallback
+    let empresaId = 0 // resolvido pela sessão logo abaixo
   
     // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
-    if (requesterId) {
+    {
+        // Tenant sempre resolvido pela sessão (requesterId é fallback de transição).
         const ctx = await getRequesterContext(requesterId)
-        empresaId = ctx.empresaId || 1
+        empresaId = ctx.empresaId
         if (!ctx.isAdmin) {
             vendedorId = ctx.vendedorId as number // Força o vendedorId dele
         }
@@ -164,13 +165,13 @@ export async function generateOportunidadesInsight(vendedorIdParam?: number, req
     const { getAIConfig } = await import("./config")
     
     let vendedorId = vendedorIdParam
-    let empresaId = 1 // Default fallback
+    let empresaId = 0 // resolvido pela sessão logo abaixo
   
     // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
-    if (requesterId) {
-        const { getRequesterVendedorId, getRequesterContext } = await import("./users")
+    {
+        // Tenant sempre resolvido pela sessão (requesterId é fallback de transição).
         const ctx = await getRequesterContext(requesterId)
-        empresaId = ctx.empresaId || 1
+        empresaId = ctx.empresaId
         if (!ctx.isAdmin) {
             vendedorId = ctx.vendedorId as number // Força o vendedorId dele
         }
@@ -246,12 +247,13 @@ export async function generateOportunidadesInsight(vendedorIdParam?: number, req
 
 export async function getLatestOportunidadesInsight(vendedorIdParam?: number, requesterId?: number) {
     let vendedorId = vendedorIdParam
-    let empresaId = 1
-  
+    let empresaId = 0 // resolvido pela sessão logo abaixo
+
     // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
-    if (requesterId) {
+    {
+        // Tenant sempre resolvido pela sessão (requesterId é fallback de transição).
         const ctx = await getRequesterContext(requesterId)
-        empresaId = ctx.empresaId || 1
+        empresaId = ctx.empresaId
         if (!ctx.isAdmin) {
             vendedorId = ctx.vendedorId as number // Força o vendedorId dele
         }

@@ -18,10 +18,15 @@ import { useState, useEffect } from "react"
 import { saveProduto, getNextProdutoCode } from "@/lib/actions/produtos"
 import { getCategorias } from "@/lib/actions/categorias"
 import { getFornecedores } from "@/lib/actions/fornecedores"
-import { Check, Box, Loader2, DollarSign, Barcode, Tags, Truck } from "lucide-react"
+import { consultarCmed } from "@/lib/actions/consultas"
+import { Check, Box, Loader2, DollarSign, Barcode, Tags, Truck, Pill } from "lucide-react"
 import { maskCurrency, parseCurrencyToNumber } from "@/lib/utils"
 import type { Produto } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+
+const brl = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 
 const produtoSchema = z.object({
   nome: z.string().min(3, "Nome obrigatório"),
@@ -47,6 +52,7 @@ export function ProdutoFormDialog({ open, onOpenChange, produtoToEdit, onSuccess
   const [loadingAutoCode, setLoadingAutoCode] = useState(false)
   const [categorias, setCategorias] = useState<any[]>([])
   const [fornecedores, setFornecedores] = useState<any[]>([])
+  const [pmvgSel, setPmvgSel] = useState<number | undefined>(undefined)
 
   const {
     register,
@@ -65,6 +71,7 @@ export function ProdutoFormDialog({ open, onOpenChange, produtoToEdit, onSuccess
   useEffect(() => {
     async function loadInitialData() {
       if (open) {
+        setPmvgSel(undefined)
         // Fetch categorias e fornecedores
         Promise.all([getCategorias(), getFornecedores()]).then(([cats, forns]) => {
           setCategorias(cats)
@@ -108,6 +115,7 @@ export function ProdutoFormDialog({ open, onOpenChange, produtoToEdit, onSuccess
         ...data,
         id: produtoToEdit?.id,
         precoBase: typeof data.precoBase === 'string' ? parseCurrencyToNumber(data.precoBase) : data.precoBase,
+        ...(pmvgSel !== undefined ? { pmvg: pmvgSel } : {}),
       }
 
       await saveProduto(finalData)
@@ -160,7 +168,20 @@ export function ProdutoFormDialog({ open, onOpenChange, produtoToEdit, onSuccess
                   <Label className="text-xs font-medium flex items-center gap-1.5">
                     <Barcode className="size-3" /> EAN / Código de Barras *
                   </Label>
-                  <Input id="ean" {...register("ean")} placeholder="Ex: 7890000000000" className="bg-muted/30 h-9 font-mono" />
+                  <div className="flex gap-1.5">
+                    <Input id="ean" {...register("ean")} placeholder="Ex: 7890000000000" className="bg-muted/30 h-9 font-mono" />
+                    <CmedEanPicker
+                      initialTerm={produtoToEdit?.nome || ""}
+                      onPick={(ean, pmvg, produto) => {
+                        setValue("ean", ean, { shouldValidate: true })
+                        setPmvgSel(pmvg)
+                        toast.success("EAN atualizado pela CMED", { description: produto })
+                      }}
+                    />
+                  </div>
+                  {pmvgSel !== undefined && (
+                    <p className="text-[10px] text-emerald-600">PMVG (teto gov.) {brl(pmvgSel)} será salvo no produto.</p>
+                  )}
                   {errors.ean && <p className="text-[10px] text-destructive">{errors.ean.message}</p>}
                 </div>
               </div>
@@ -252,5 +273,72 @@ export function ProdutoFormDialog({ open, onOpenChange, produtoToEdit, onSuccess
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function CmedEanPicker({
+  initialTerm,
+  onPick,
+}: {
+  initialTerm: string
+  onPick: (ean: string, pmvg: number, produto: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState(initialTerm)
+  const [results, setResults] = useState<Awaited<ReturnType<typeof consultarCmed>>>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    const q = query.trim()
+    if (q.length < 2) { setResults([]); return }
+    setLoading(true)
+    const t = setTimeout(async () => {
+      try { setResults(await consultarCmed(q)) } catch { setResults([]) } finally { setLoading(false) }
+    }, 350)
+    return () => clearTimeout(t)
+  }, [query, open])
+
+  useEffect(() => { if (open) setQuery(initialTerm) }, [open, initialTerm])
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="icon" className="h-9 shrink-0" title="Buscar EAN atual na CMED">
+          <Pill className="size-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[380px] p-0" align="end">
+        <Command shouldFilter={false}>
+          <CommandInput placeholder="Buscar medicamento na CMED..." value={query} onValueChange={setQuery} />
+          <CommandList>
+            {query.trim().length < 2 ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">Digite ao menos 2 caracteres…</div>
+            ) : loading ? (
+              <div className="py-6 flex justify-center"><Loader2 className="size-4 animate-spin text-muted-foreground" /></div>
+            ) : results.length === 0 ? (
+              <CommandEmpty>Nada na CMED. Importe a planilha em Consultas → CMED.</CommandEmpty>
+            ) : (
+              <CommandGroup>
+                {results.filter((m) => m.ean).map((m) => (
+                  <CommandItem
+                    key={m.id}
+                    value={String(m.id)}
+                    onSelect={() => { onPick(m.ean!, m.pmvg, m.produto); setOpen(false) }}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm">{m.produto}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        <span className="font-mono">{m.ean}</span> · {[m.apresentacao, m.laboratorio].filter(Boolean).join(" · ")} · PMVG {brl(m.pmvg)}
+                      </span>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }

@@ -6,7 +6,6 @@ import {
   getPlanejamentoItens,
   vincularImportacao,
   desvincularImportacao,
-  sincronizarMatriz,
   calcularNecessidade,
   ajustarPlanejamentoItem,
   gerarPedidosFromPlanejamento,
@@ -20,7 +19,7 @@ import { useDataQuery } from "@/hooks/use-data-query"
 import { use, useMemo, useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Upload, RefreshCw, Calculator, Trophy, ChevronLeft, ChevronRight, FileText, ShoppingCart, ExternalLink } from "lucide-react"
+import { ArrowLeft, Upload, Calculator, Trophy, ChevronLeft, ChevronRight, FileText, ShoppingCart, ExternalLink, Loader2, Save } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
@@ -60,6 +59,10 @@ export default function PlanejamentoDetalhePage({
   const [limit, setLimit] = useState(20)
   const [processando, setProcessando] = useState(false)
   const [gerandoPedidos, setGerandoPedidos] = useState(false)
+  const [vinculando, setVinculando] = useState<number | null>(null)
+  const [dirty, setDirty] = useState<Set<number>>(new Set())
+  const [salvando, setSalvando] = useState(false)
+  const [fornecedorFiltro, setFornecedorFiltro] = useState<number | null>(null)
   const [diasCobertura, setDiasCobertura] = useState(90)
 
   const { data: plan, refetch: refetchPlan } = useDataQuery({
@@ -151,6 +154,7 @@ export default function PlanejamentoDetalhePage({
   }
 
   async function handleVincular(importacaoId: number) {
+    setVinculando(importacaoId)
     try {
       await vincularImportacao(planejamentoId, importacaoId, currentUser?.id)
       toast.success("Importação vinculada.")
@@ -158,6 +162,8 @@ export default function PlanejamentoDetalhePage({
       refetchImp()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro.")
+    } finally {
+      setVinculando(null)
     }
   }
 
@@ -169,19 +175,6 @@ export default function PlanejamentoDetalhePage({
       refetchImp()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro.")
-    }
-  }
-
-  async function handleSync() {
-    setProcessando(true)
-    try {
-      await sincronizarMatriz(planejamentoId, currentUser?.id)
-      toast.success("Comparativo atualizado.")
-      refetch()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro.")
-    } finally {
-      setProcessando(false)
     }
   }
 
@@ -198,12 +191,44 @@ export default function PlanejamentoDetalhePage({
     }
   }
 
-  async function handleAjustar(
+  // Edita só localmente (linha estática) e marca como "não salvo". A gravação
+  // acontece no botão "Salvar alterações".
+  function editarItem(
     itemId: number,
     data: { qtdNecessaria?: number; incluir?: boolean; fornecedorEscolhidoId?: number }
   ) {
-    await ajustarPlanejamentoItem(itemId, data, currentUser?.id)
-    refetch()
+    setItens((prev) => prev.map((it) => (it.id === itemId ? { ...it, ...data } : it)))
+    setDirty((prev) => new Set(prev).add(itemId))
+  }
+
+  async function handleSalvar() {
+    if (dirty.size === 0) return
+    setSalvando(true)
+    try {
+      const byId = new Map(itens.map((i) => [i.id, i]))
+      await Promise.all(
+        [...dirty].map((idItem) => {
+          const it = byId.get(idItem)
+          if (!it) return Promise.resolve()
+          return ajustarPlanejamentoItem(
+            idItem,
+            {
+              qtdNecessaria: it.qtdNecessaria,
+              incluir: it.incluir,
+              fornecedorEscolhidoId: it.fornecedorEscolhidoId ?? undefined,
+            },
+            currentUser?.id
+          )
+        })
+      )
+      setDirty(new Set())
+      toast.success("Alterações salvas.")
+      refetch()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar.")
+    } finally {
+      setSalvando(false)
+    }
   }
 
   async function handleGerarPedidos() {
@@ -233,7 +258,11 @@ export default function PlanejamentoDetalhePage({
     }
   }
 
-  const itens = itensData?.itens ?? []
+  // Cópia local da matriz para edição otimista (sem recarregar a lista a cada ajuste).
+  const [itens, setItens] = useState<NonNullable<typeof itensData>["itens"]>([])
+  useEffect(() => {
+    setItens(itensData?.itens ?? [])
+  }, [itensData])
 
   async function handleCriarCotacao(fornecedorIds: number[]) {
     const res = await criarCotacaoFromPlanejamento(
@@ -247,6 +276,14 @@ export default function PlanejamentoDetalhePage({
   }
 
   if (!plan) return <AppShell><p>Carregando...</p></AppShell>
+
+  // Filtro por fornecedor (quando há mais de uma tabela): restringe colunas e linhas.
+  const colsVisiveis = fornecedorFiltro
+    ? fornecedorCols.filter((f) => f.id === fornecedorFiltro)
+    : fornecedorCols
+  const itensVisiveis = fornecedorFiltro
+    ? itens.filter((it) => it.precos.some((p) => p.fornecedorId === fornecedorFiltro))
+    : itens
 
   return (
     <AppShell>
@@ -279,11 +316,13 @@ export default function PlanejamentoDetalhePage({
           <PlanejamentoAjuda variant="detalhe" />
           {editavel && (
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={handleSync} disabled={processando}>
-                <RefreshCw className="size-4 mr-2" /> Atualizar comparativo
-              </Button>
               <Button variant="outline" onClick={handleCalcular} disabled={processando}>
-                <Calculator className="size-4 mr-2" /> Calcular necessidade
+                {processando ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <Calculator className="size-4 mr-2" />
+                )}
+                {processando ? "Processando..." : "Calcular necessidade"}
               </Button>
             </div>
           )}
@@ -379,8 +418,16 @@ export default function PlanejamentoDetalhePage({
                   onChange={handleUpload}
                   disabled={uploading || !editavel}
                 />
-                <span className="inline-flex items-center justify-center w-full h-9 px-4 rounded-md border text-sm hover:bg-muted/50">
-                  {uploading ? "Enviando..." : "Upload planilha"}
+                <span className="inline-flex items-center justify-center gap-2 w-full h-9 px-4 rounded-md border text-sm hover:bg-muted/50">
+                  {uploading ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="size-4" /> Upload planilha
+                    </>
+                  )}
                 </span>
               </Label>
 
@@ -430,7 +477,14 @@ export default function PlanejamentoDetalhePage({
                             {new Date(imp.criadoEm).toLocaleDateString("pt-BR")}
                           </p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleVincular(imp.id)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={vinculando === imp.id}
+                          onClick={() => handleVincular(imp.id)}
+                        >
+                          {vinculando === imp.id && <Loader2 className="size-3.5 animate-spin" />}
                           Vincular
                         </Button>
                       </div>
@@ -475,13 +529,39 @@ export default function PlanejamentoDetalhePage({
                   ))}
                 </SelectContent>
               </Select>
+              {fornecedorCols.length > 1 && (
+                <Select
+                  value={fornecedorFiltro ? String(fornecedorFiltro) : "todos"}
+                  onValueChange={(v) => setFornecedorFiltro(v === "todos" ? null : +v)}
+                >
+                  <SelectTrigger className="w-48 h-9">
+                    <SelectValue placeholder="Todos os fornecedores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos os fornecedores</SelectItem>
+                    {fornecedorCols.map((f) => (
+                      <SelectItem key={f.id} value={String(f.id)}>{f.razaoSocial}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Badge variant="secondary">
                 {itensData?.total ?? 0} itens
                 {itensData && itensData.totalPages > 1 && ` · pág ${page}/${itensData.totalPages}`}
               </Badge>
+              {dirty.size > 0 && editavel && (
+                <Button size="sm" className="ml-auto gap-2" onClick={handleSalvar} disabled={salvando}>
+                  {salvando ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                  Salvar alterações ({dirty.size})
+                </Button>
+              )}
             </div>
 
-            {loadingItens && <p className="text-sm text-muted-foreground">Carregando itens...</p>}
+            {loadingItens && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="size-4 animate-spin" /> Carregando itens...
+              </div>
+            )}
 
             {!loadingItens && itens.length > 0 && fornecedorCols.length > 0 ? (
               <Card>
@@ -494,7 +574,8 @@ export default function PlanejamentoDetalhePage({
                         <th className="p-2 text-right">Média/d</th>
                         <th className="p-2 text-right">Dias</th>
                         <th className="p-2 text-right">Qtd comprar</th>
-                        {fornecedorCols.map((f) => (
+                        <th className="p-2 text-right min-w-[110px]">Últ. compra</th>
+                        {colsVisiveis.map((f) => (
                           <th key={f.id} className="p-2 text-right min-w-[90px]">{f.razaoSocial}</th>
                         ))}
                         <th className="p-2 text-left">Fornecedor</th>
@@ -502,7 +583,7 @@ export default function PlanejamentoDetalhePage({
                       </tr>
                     </thead>
                     <tbody>
-                      {itens.map((item) => {
+                      {itensVisiveis.map((item) => {
                         const melhorId = item.melhorFornecedorId
                         const escolhido = item.fornecedorEscolhidoId ?? melhorId
                         return (
@@ -529,16 +610,32 @@ export default function PlanejamentoDetalhePage({
                                 <Input
                                   type="number"
                                   className="w-20 h-8 ml-auto"
-                                  defaultValue={item.qtdNecessaria}
-                                  onBlur={(e) =>
-                                    handleAjustar(item.id, { qtdNecessaria: +e.target.value })
-                                  }
+                                  value={item.qtdNecessaria}
+                                  onChange={(e) => {
+                                    const q = e.target.value === "" ? 0 : +e.target.value
+                                    // Ao informar quantidade, marca o item automaticamente.
+                                    editarItem(item.id, { qtdNecessaria: q, ...(q > 0 ? { incluir: true } : {}) })
+                                  }}
                                 />
                               ) : (
                                 item.qtdNecessaria
                               )}
                             </td>
-                            {fornecedorCols.map((f) => {
+                            <td className="p-2 text-right text-xs">
+                              {item.ultimaCompra ? (
+                                <div className="leading-tight">
+                                  <span className="font-medium">
+                                    {item.ultimaCompra.preco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                  </span>
+                                  <span className="block text-[10px] text-muted-foreground">
+                                    {new Date(item.ultimaCompra.data).toLocaleDateString("pt-BR")}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </td>
+                            {colsVisiveis.map((f) => {
                               const preco = item.precos.find((p) => p.fornecedorId === f.id)
                               const isMenor = preco && escolhido === f.id
                               return (
@@ -560,7 +657,7 @@ export default function PlanejamentoDetalhePage({
                                 <Select
                                   value={escolhido ? String(escolhido) : undefined}
                                   onValueChange={(v) =>
-                                    handleAjustar(item.id, { fornecedorEscolhidoId: +v })
+                                    editarItem(item.id, { fornecedorEscolhidoId: +v })
                                   }
                                 >
                                   <SelectTrigger className="h-8 text-xs w-36">
@@ -588,13 +685,20 @@ export default function PlanejamentoDetalhePage({
                                 checked={item.incluir}
                                 disabled={!editavel}
                                 onCheckedChange={(c) =>
-                                  handleAjustar(item.id, { incluir: c === true })
+                                  editarItem(item.id, { incluir: c === true })
                                 }
                               />
                             </td>
                           </tr>
                         )
                       })}
+                      {itensVisiveis.length === 0 && (
+                        <tr>
+                          <td colSpan={8 + colsVisiveis.length} className="text-center text-muted-foreground py-8">
+                            Nenhum item com preço deste fornecedor nesta página.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </CardContent>

@@ -14,7 +14,7 @@ import {
 } from "@/lib/compras/json-store"
 import type { CotacaoRespostaJson } from "@/lib/compras/types"
 import type { ComprasListFiltros } from "@/lib/compras/list-filters"
-import { buildCriadoEmFilter } from "@/lib/compras/list-filters"
+import { buildCriadoEmFilter, buildPaginacao } from "@/lib/compras/list-filters"
 import type { StatusCotacaoCompra } from "@prisma/client"
 
 function hashToken(token: string) {
@@ -68,42 +68,55 @@ export async function getCotacoesCompra(filtros?: ComprasListFiltros, requesterI
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const criadoEm = buildCriadoEmFilter(filtros?.dataInicio, filtros?.dataFim)
   const search = filtros?.search?.trim()
+  const { skip, take, page } = buildPaginacao(filtros?.page)
 
-  return prisma.cotacaoCompra.findMany({
-    where: {
-      empresaId: ctx.empresaId,
-      ...(filtros?.status ? { status: filtros.status as StatusCotacaoCompra } : {}),
-      ...(criadoEm ? { criadoEm } : {}),
-      ...(filtros?.fornecedorId
-        ? { fornecedores: { some: { fornecedorId: filtros.fornecedorId } } }
-        : {}),
-      ...(search
-        ? {
-            OR: [
-              { numero: { contains: search, mode: "insensitive" } },
-              { titulo: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      fornecedores: { include: { fornecedor: { select: { razaoSocial: true } } } },
-      _count: { select: { itens: true } },
-    },
-    orderBy: { criadoEm: "desc" },
-    take: 30,
-  })
+  const where = {
+    empresaId: ctx.empresaId,
+    ...(filtros?.status ? { status: filtros.status as StatusCotacaoCompra } : {}),
+    ...(criadoEm ? { criadoEm } : {}),
+    ...(filtros?.fornecedorId
+      ? { fornecedores: { some: { fornecedorId: filtros.fornecedorId } } }
+      : {}),
+    ...(search
+      ? {
+          OR: [
+            { numero: { contains: search, mode: "insensitive" as const } },
+            { titulo: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  }
+
+  const [list, total] = await Promise.all([
+    prisma.cotacaoCompra.findMany({
+      where,
+      select: {
+        id: true,
+        numero: true,
+        titulo: true,
+        status: true,
+        criadoEm: true,
+        _count: { select: { itens: true, fornecedores: true } },
+      },
+      orderBy: { criadoEm: "desc" },
+      skip,
+      take,
+    }),
+    prisma.cotacaoCompra.count({ where }),
+  ])
+
+  return { data: list, total, page, totalPages: Math.ceil(total / take) }
 }
 
 export async function getCotacaoCompraById(id: number, requesterId?: number) {
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const cotacao = await prisma.cotacaoCompra.findFirst({
     where: { id, empresaId: ctx.empresaId },
@@ -134,7 +147,7 @@ export async function criarCotacaoFromPlanejamento(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
   if (!fornecedorIds.length) throw new Error("Selecione ao menos um fornecedor.")
@@ -229,7 +242,7 @@ export async function gerarLinkPortalFornecedor(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -267,7 +280,7 @@ export async function criarCotacaoManual(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -304,7 +317,7 @@ export async function criarCotacaoManual(
 export async function fecharCotacao(cotacaoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   await assertCotacaoEditavel(cotacaoId, ctx.empresaId)
   return prisma.cotacaoCompra.update({

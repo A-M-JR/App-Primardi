@@ -5,6 +5,20 @@ import { Vendedor } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 
 import { Prisma } from "@prisma/client"
+import { requireMasterOrTI } from "./users"
+
+/**
+ * Vendedores ativos de TODAS as empresas, com empresaId — para o editor de
+ * vínculos de usuário (que filtra o vendedor pela empresa do membership).
+ */
+export async function getVendedoresParaVinculo() {
+  await requireMasterOrTI()
+  return prisma.vendedor.findMany({
+    where: { ativo: true },
+    orderBy: { nome: "asc" },
+    select: { id: true, nome: true, empresaId: true },
+  })
+}
 
 export async function getVendedores(params: {
   page?: number

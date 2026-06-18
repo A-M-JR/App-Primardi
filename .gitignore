@@ -7,5 +7,13 @@ __v0_jsx-dev-runtime.ts
 node_modules/
 .next/
 uploads/
-.env*.local
 .DS_Store
+
+# Variáveis de ambiente (NUNCA versionar segredos). Use .env.example como modelo.
+.env
+.env.*
+!.env.example
+
+# Gerenciador de pacotes: usamos SOMENTE npm (package-lock.json).
+yarn.lock
+pnpm-lock.yaml

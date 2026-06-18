@@ -22,7 +22,7 @@ import { consolidarPrecosImportacao } from "./precos"
 import { parseImportConfig, parseLinhasImportacao, mappedLineToImportJson, toLinhasImportJson } from "@/lib/compras/json-store"
 import type { LinhaImportacaoFornecedorJson } from "@/lib/compras/types"
 import type { ComprasListFiltros } from "@/lib/compras/list-filters"
-import { buildCriadoEmFilter } from "@/lib/compras/list-filters"
+import { buildCriadoEmFilter, buildPaginacao } from "@/lib/compras/list-filters"
 import type { StatusImportacao } from "@prisma/client"
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "compras")
@@ -55,32 +55,40 @@ export async function getImportacoes(filtros?: ComprasListFiltros, requesterId?:
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const criadoEm = buildCriadoEmFilter(filtros?.dataInicio, filtros?.dataFim)
   const search = filtros?.search?.trim()
+  const { skip, take, page } = buildPaginacao(filtros?.page)
 
-  return prisma.fornecedorImportacao.findMany({
-    where: {
-      empresaId: ctx.empresaId,
-      ...(filtros?.fornecedorId ? { fornecedorId: filtros.fornecedorId } : {}),
-      ...(filtros?.status ? { status: filtros.status as StatusImportacao } : {}),
-      ...(criadoEm ? { criadoEm } : {}),
-      ...(search
-        ? {
-            OR: [
-              { nomeArquivo: { contains: search, mode: "insensitive" } },
-              { fornecedor: { razaoSocial: { contains: search, mode: "insensitive" } } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      fornecedor: { select: { id: true, razaoSocial: true } },
-    },
-    orderBy: { criadoEm: "desc" },
-    take: 50,
-  })
+  const where = {
+    empresaId: ctx.empresaId,
+    ...(filtros?.fornecedorId ? { fornecedorId: filtros.fornecedorId } : {}),
+    ...(filtros?.status ? { status: filtros.status as StatusImportacao } : {}),
+    ...(criadoEm ? { criadoEm } : {}),
+    ...(search
+      ? {
+          OR: [
+            { nomeArquivo: { contains: search, mode: "insensitive" as const } },
+            { fornecedor: { razaoSocial: { contains: search, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
+  }
+
+  const [list, total] = await Promise.all([
+    prisma.fornecedorImportacao.findMany({
+      where,
+      omit: { linhas: true }, // não carrega o JSON pesado na listagem
+      include: { fornecedor: { select: { id: true, razaoSocial: true } } },
+      orderBy: { criadoEm: "desc" },
+      skip,
+      take,
+    }),
+    prisma.fornecedorImportacao.count({ where }),
+  ])
+
+  return { data: list, total, page, totalPages: Math.ceil(total / take) }
 }
 
 export async function getImportacaoDetalhe(
@@ -92,7 +100,7 @@ export async function getImportacaoDetalhe(
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const imp = await prisma.fornecedorImportacao.findFirst({
     where: { id: importacaoId, empresaId: ctx.empresaId },
@@ -146,7 +154,7 @@ export async function criarImportacaoFromUpload(params: {
 }) {
   const ctx = params.requesterId
     ? await getRequesterContext(params.requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -213,7 +221,7 @@ export async function criarImportacaoMultiFornecedor(params: {
 }) {
   const ctx = params.requesterId
     ? await getRequesterContext(params.requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -320,7 +328,7 @@ export async function processarImportacao(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const userId = ctx.userId
   const imp = await assertImportacaoEditavel(importacaoId, ctx.empresaId)
@@ -365,7 +373,7 @@ export async function processarImportacao(
 export async function cancelarImportacao(importacaoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   await assertImportacaoEditavel(importacaoId, ctx.empresaId)
   await prisma.fornecedorImportacao.update({
@@ -378,7 +386,7 @@ export async function cancelarImportacao(importacaoId: number, requesterId?: num
 export async function excluirImportacao(importacaoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -411,7 +419,7 @@ export async function getLinhasPendentesMatch(importacaoId: number, requesterId?
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const imp = await prisma.fornecedorImportacao.findFirst({
     where: { id: importacaoId, empresaId: ctx.empresaId },

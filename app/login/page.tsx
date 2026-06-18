@@ -7,8 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, ArrowRight, AlertTriangle, ShieldX, Eye, EyeOff } from "lucide-react"
+import { Loader2, ArrowRight, AlertTriangle, ShieldX, Eye, EyeOff, KeyRound, Mail } from "lucide-react"
 import { toast } from "sonner"
+
+// Contato para redefinição de senha (reset é feito pelo TI/admin — sem e-mail automático).
+const SUPORTE_EMAIL = "ti@ilumisol.com.br"
 
 type ErrorType = "invalid_credentials" | "user_blocked" | null
 
@@ -38,6 +41,7 @@ export default function LoginPage() {
     const [isLoggingIn, setIsLoggingIn] = useState(false)
     const [loginError, setLoginError] = useState<ErrorType>(null)
     const [shakeCard, setShakeCard] = useState(false)
+    const [showResetInfo, setShowResetInfo] = useState(false)
     const router = useRouter()
     const { login } = useAuth()
 
@@ -95,12 +99,15 @@ export default function LoginPage() {
                         {/* Top accent bar - muda de cor se tem erro */}
                         <div className={`h-1 w-full bg-gradient-to-r transition-all duration-500 ${loginError === "user_blocked" ? "from-red-500 via-red-400 to-red-600" : loginError ? "from-amber-500 via-amber-400 to-amber-600" : "from-brand-accent via-emerald-400 to-brand-bg"}`}></div>
 
-                        <CardHeader className="space-y-2 pb-6 pt-8 px-8 text-center">
-                            <CardTitle className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                                Acesso Restrito
+                        <CardHeader className="space-y-1.5 pb-6 pt-9 px-8 text-center">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/80">
+                                Painel de Gestão
+                            </span>
+                            <CardTitle className="text-[26px] leading-tight font-bold tracking-tight text-zinc-900 dark:text-white">
+                                Bem-vindo de volta
                             </CardTitle>
-                            <CardDescription className="text-sm text-zinc-600 dark:text-zinc-400">
-                                Insira suas credenciais corporativas.
+                            <CardDescription className="text-sm text-zinc-500 dark:text-zinc-400">
+                                Entre com suas credenciais corporativas para continuar.
                             </CardDescription>
                         </CardHeader>
 
@@ -137,10 +144,33 @@ export default function LoginPage() {
                                         <Label htmlFor="password" className="font-semibold text-zinc-700 dark:text-zinc-300">
                                             Senha
                                         </Label>
-                                        <a href="#" className="text-sm font-medium text-primary hover:text-primary/80 hover:underline underline-offset-4 transition-colors">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowResetInfo((v) => !v)}
+                                            className="text-sm font-medium text-primary hover:text-primary/80 hover:underline underline-offset-4 transition-colors"
+                                        >
                                             Esqueceu a senha?
-                                        </a>
+                                        </button>
                                     </div>
+                                    {showResetInfo && (
+                                        <div className="flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 animate-in fade-in slide-in-from-top-1 duration-300">
+                                            <KeyRound className="size-5 mt-0.5 shrink-0 text-primary" />
+                                            <div className="flex flex-col gap-1.5">
+                                                <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">Redefinição de senha</p>
+                                                <p className="text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+                                                    Por segurança, a senha é redefinida pela equipe de TI/administração.
+                                                    Solicite a redefinição informando seu e-mail de acesso.
+                                                </p>
+                                                <a
+                                                    href={`mailto:${SUPORTE_EMAIL}?subject=Redefini%C3%A7%C3%A3o%20de%20senha&body=Ol%C3%A1%2C%20preciso%20redefinir%20a%20senha%20do%20meu%20acesso.%20Meu%20e-mail%3A%20`}
+                                                    className="mt-0.5 inline-flex w-fit items-center gap-1.5 text-xs font-semibold text-primary hover:underline underline-offset-4"
+                                                >
+                                                    <Mail className="size-3.5" />
+                                                    {SUPORTE_EMAIL}
+                                                </a>
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="relative">
                                         <Input
                                             id="password"
@@ -184,11 +214,11 @@ export default function LoginPage() {
                             </form>
                         </CardContent>
 
-                        <CardFooter className="flex flex-col gap-2 border-t border-zinc-200/50 dark:border-zinc-800/50 py-5 bg-zinc-50/50 dark:bg-zinc-900/30 px-8">
+                        <CardFooter className="flex items-center justify-center gap-2 border-t border-zinc-200/50 dark:border-zinc-800/50 py-4 bg-zinc-50/50 dark:bg-zinc-900/30 px-8">
+                            <span className="size-1.5 rounded-full bg-emerald-500/80" />
                             <p className="text-[11px] font-medium text-zinc-500 text-center tracking-wider uppercase">
-                                Primardi © {new Date().getFullYear()}
+                                Acesso seguro · © {new Date().getFullYear()}
                             </p>
-                            
                         </CardFooter>
                     </Card>
                 </div>

@@ -282,18 +282,17 @@ export async function saveOrcamento(data: any, requesterId?: number) {
   const { id, itens, ...rest } = data
   
   let forcedVendedorId = rest.vendedorId
-  let ctx: any = null;
+
+  // Contexto/tenant sempre resolvido pela sessão (requesterId é só fallback de transição).
+  const ctx = await getRequesterContext(requesterId)
 
   // SEGURANÇA: Vendedor só mexe no dele
-  if (requesterId) {
-    ctx = await getRequesterContext(requesterId)
-    if (!ctx.isAdmin) {
-      if (id) {
-        const orc = await prisma.orcamento.findUnique({ where: { id }, select: { vendedorId: true } })
-        if (!orc || orc.vendedorId !== ctx.vendedorId) throw new Error("Acesso negado.")
-      }
-      forcedVendedorId = ctx.vendedorId // Força ser dele na criação ou edição
+  if (!ctx.isAdmin) {
+    if (id) {
+      const orc = await prisma.orcamento.findUnique({ where: { id }, select: { vendedorId: true } })
+      if (!orc || orc.vendedorId !== ctx.vendedorId) throw new Error("Acesso negado.")
     }
+    forcedVendedorId = ctx.vendedorId // Força ser dele na criação ou edição
   }
 
   if (!itens || !Array.isArray(itens)) {
@@ -332,7 +331,7 @@ export async function saveOrcamento(data: any, requesterId?: number) {
     if (found) {
       finalStatusId = found.id
     } else {
-      const empId = ctx?.empresaId || 1
+      const empId = ctx.empresaId
       const count = await prisma.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
       let cor = '#64748b'
       if (officialName === 'Aprovado') cor = '#10b981'
@@ -365,7 +364,7 @@ export async function saveOrcamento(data: any, requesterId?: number) {
       const count = await prisma.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
       const created = await prisma.status.create({
         data: {
-          empresaId: 1,
+          empresaId: ctx.empresaId,
           nome: 'Bonificação',
           modulo: ModuloStatus.ORCAMENTO,
           ordem: count + 1,
@@ -377,7 +376,7 @@ export async function saveOrcamento(data: any, requesterId?: number) {
   }
 
   const prismaData = {
-    empresaId: ctx?.empresaId || 1,
+    empresaId: ctx.empresaId,
     tipoFrete: rest.tipoFrete || "",
     valorFrete: Number(rest.valorFrete) || 0,
 
@@ -403,7 +402,7 @@ export async function saveOrcamento(data: any, requesterId?: number) {
         let found = await tx.status.findFirst({ where: { modulo: ModuloStatus.ORCAMENTO, nome: { equals: 'Pendente', mode: 'insensitive' } } })
         if (!found) {
           const count = await tx.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
-          found = await tx.status.create({ data: { empresaId: ctx?.empresaId || 1, nome: 'Pendente', modulo: ModuloStatus.ORCAMENTO, ordem: count + 1, cor: '#64748b' } })
+          found = await tx.status.create({ data: { empresaId: ctx.empresaId, nome: 'Pendente', modulo: ModuloStatus.ORCAMENTO, ordem: count + 1, cor: '#64748b' } })
         }
         sid = found.id
       }
@@ -500,7 +499,7 @@ export async function saveOrcamento(data: any, requesterId?: number) {
         let found = await prisma.status.findFirst({ where: { modulo: ModuloStatus.ORCAMENTO, nome: { equals: 'Pendente', mode: 'insensitive' } } })
         if (!found) {
           const count = await prisma.status.count({ where: { modulo: ModuloStatus.ORCAMENTO } })
-          found = await prisma.status.create({ data: { empresaId: ctx?.empresaId || 1, nome: 'Pendente', modulo: ModuloStatus.ORCAMENTO, ordem: count + 1, cor: '#64748b' } })
+          found = await prisma.status.create({ data: { empresaId: ctx.empresaId, nome: 'Pendente', modulo: ModuloStatus.ORCAMENTO, ordem: count + 1, cor: '#64748b' } })
         }
         sid = found.id
       }

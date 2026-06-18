@@ -1,9 +1,9 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
-import { User, Vendedor } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
+import { getSession, setSession } from "@/lib/session"
 
 import { Prisma } from "@prisma/client"
 
@@ -13,29 +13,31 @@ export async function getUsers(params: {
   search?: string
   status?: 'todos' | 'ativo' | 'inativo'
 } = {}) {
+  const ctx = await getRequesterContext()
   const page = params.page || 1
   const limit = params.limit || 20
   const searchPattern = `%${params.search || ""}%`
   const status = params.status || 'todos'
 
-  // 1. SQL Raw para contadores de status
+  // 1. SQL Raw para contadores de status (escopado por empresa via membership)
   let statusFilterSql = Prisma.sql`TRUE`
-  if (status === 'ativo') statusFilterSql = Prisma.sql`"ativo" = TRUE`
-  else if (status === 'inativo') statusFilterSql = Prisma.sql`"ativo" = FALSE`
+  if (status === 'ativo') statusFilterSql = Prisma.sql`u."ativo" = TRUE`
+  else if (status === 'inativo') statusFilterSql = Prisma.sql`u."ativo" = FALSE`
 
   const counts: any[] = await prisma.$queryRaw`
-    SELECT 
+    SELECT
       COUNT(*) FILTER (WHERE ${statusFilterSql})::int as total_filtrado,
-      COUNT(*) FILTER (WHERE "ativo" = TRUE)::int as ativos,
-      COUNT(*) FILTER (WHERE "ativo" = FALSE)::int as bloqueados,
+      COUNT(*) FILTER (WHERE u."ativo" = TRUE)::int as ativos,
+      COUNT(*) FILTER (WHERE u."ativo" = FALSE)::int as bloqueados,
       COUNT(*)::int as total_global
-    FROM "crm_users"
-    WHERE ("nome" ILIKE ${searchPattern} OR "email" ILIKE ${searchPattern})
+    FROM "crm_users" u
+    JOIN "crm_user_empresas" ue ON ue."userId" = u.id AND ue."empresaId" = ${ctx.empresaId}
+    WHERE (u."nome" ILIKE ${searchPattern} OR u."email" ILIKE ${searchPattern})
   `
   const stats = counts[0] || { total_filtrado: 0, ativos: 0, bloqueados: 0, total_global: 0 }
 
-  // 2. Busca paginada
-  const where: any = {}
+  // 2. Busca paginada (escopada por empresa via membership)
+  const where: any = { memberships: { some: { empresaId: ctx.empresaId } } }
   if (params.search) {
     where.OR = [
       { nome: { contains: params.search, mode: "insensitive" } },
@@ -68,38 +70,6 @@ export async function getUsers(params: {
   }
 }
 
-export async function saveUser(data: Partial<User>, senha?: string) {
-  const { id, ...rest } = data
-  
-  // Remove fields that shouldn't be updated directly via this method if necessary
-  const prismaData: any = {
-    nome: rest.nome,
-    email: rest.email?.toLowerCase(),
-    role: rest.role,
-    vendedorId: rest.vendedorId || null,
-    ativo: rest.ativo,
-  }
-
-  if (senha) {
-    prismaData.senha = await bcrypt.hash(senha, 10)
-  }
-
-  if (!id || id > 1000000000) {
-    // New user
-    if (!senha) prismaData.senha = await bcrypt.hash("123456", 10) // Default password
-    
-    return prisma.user.create({
-      data: prismaData
-    })
-  } else {
-    // Update existing
-    return prisma.user.update({
-      where: { id: id as any },
-      data: prismaData
-    })
-  }
-}
-
 export async function toggleUserActive(id: number) {
   const user = await prisma.user.findUnique({ where: { id: id as any } })
   if (!user) throw new Error("Usuário não encontrado")
@@ -119,62 +89,285 @@ export async function updateUserPassword(id: number, senha: string) {
     data: { senha: hashedPassword },
   })
 }
-export async function verifySession(id: number) {
-  const user = await prisma.user.findUnique({
-    where: { id: id as any },
-  })
-
-  if (!user || !user.ativo) return null
-
-  let vendor = null
-  if (user.vendedorId) {
-    vendor = await prisma.vendedor.findUnique({
-      where: { id: user.vendedorId as any }
-    })
-  }
-
-  return {
-    user: {
-      ...user,
-      criadoEm: user.criadoEm.toISOString()
-    } as unknown as User,
-    vendor: vendor ? {
-      ...vendor,
-      criadoEm: vendor.criadoEm.toISOString()
-    } as unknown as Vendedor : null
-  }
-}
 
 /**
- * Retorna 'admin' se for administrador, ou o vendedorId se for um vendedor limitado.
+ * Retorna 'ADMIN' se o solicitante tem visão total (MASTER/TI/GERENTE),
+ * ou o vendedorId quando é um OPERADOR limitado a um vendedor.
  * Usado para forçar filtros de segurança no lado do servidor.
  */
-export async function getRequesterVendedorId(userId: number): Promise<number | 'ADMIN'> {
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) } })
-  
-  // Se o usuário não existir, não estiver ativo ou não for admin e não tiver vendedorId,
-  // retornamos -1 para garantir que ele não veja nada (filtro por ID inexistente).
-  if (!user || !user.ativo) return -1
-  if (user.role === 'ADMIN') return 'ADMIN'
-  
-  return user.vendedorId || -1
+export async function getRequesterVendedorId(userId?: number): Promise<number | 'ADMIN'> {
+  const ctx = await getRequesterContext(userId)
+  if (ctx.isAdmin) return 'ADMIN'
+  return ctx.vendedorId || -1
+}
+
+export interface RequesterContext {
+  userId: number
+  empresaId: number
+  nivelAcesso: "MASTER" | "TI" | "PADRAO"
+  role: "GERENTE" | "OPERADOR"
+  vendedorId: number | null
+  permissoes: Record<string, string[]>
+  modulosAtivos: string[]
+  isAdmin: boolean // compat: "vê tudo" = MASTER/TI ou GERENTE
 }
 
 /**
- * Novo helper para retornar o contexto completo de autorização e multi-tenant
+ * Resolve a empresa inicial de um usuário sem depender da coluna legada
+ * `User.empresaId`: usa o 1º membership ativo; para MASTER/TI sem membership,
+ * cai na 1ª empresa cadastrada.
  */
-export async function getRequesterContext(userId: number) {
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) } })
-  
-  if (!user || !user.ativo) {
-    throw new Error("Usuário não autorizado ou inativo.");
+async function resolverEmpresaInicial(userId: number, crossTenant: boolean): Promise<number | null> {
+  const m = await prisma.userEmpresa.findFirst({
+    where: { userId, ativo: true },
+    orderBy: { empresaId: "asc" },
+    select: { empresaId: true },
+  })
+  if (m) return m.empresaId
+  if (crossTenant) {
+    const e = await prisma.empresa.findFirst({ orderBy: { id: "asc" }, select: { id: true } })
+    return e?.id ?? null
   }
+  return null
+}
+
+/**
+ * Contexto de autorização e multitenant da requisição.
+ *
+ * Fonte de verdade: o cookie de sessão (server-side). O parâmetro `userId`
+ * é apenas fallback de compatibilidade durante a transição (chamadas antigas
+ * que ainda passam o requesterId vindo do cliente). Não há mais fallback
+ * silencioso para `empresaId: 1`.
+ *
+ * O nível (MASTER/TI/PADRAO) vem do `User`; a role e as permissões vêm do
+ * vínculo `UserEmpresa` da empresa ATIVA. MASTER/TI acessam qualquer empresa
+ * mesmo sem membership; PADRAO precisa de membership ativo.
+ */
+export async function getRequesterContext(userId?: number): Promise<RequesterContext> {
+  const session = await getSession()
+  const resolvedId = session?.userId ?? (userId != null ? Number(userId) : undefined)
+
+  if (resolvedId == null) {
+    throw new Error("Não autenticado.")
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: resolvedId } })
+  if (!user || !user.ativo) {
+    throw new Error("Usuário não autorizado ou inativo.")
+  }
+
+  const nivelAcesso = user.nivelAcesso as RequesterContext["nivelAcesso"]
+  const crossTenant = nivelAcesso === "MASTER" || nivelAcesso === "TI"
+
+  // empresa ativa vem da sessão; fallback para a 1ª empresa acessível (memberships).
+  const empresaId = session?.empresaId ?? (await resolverEmpresaInicial(user.id, crossTenant))
+  if (empresaId == null) {
+    throw new Error("Usuário sem empresa vinculada.")
+  }
+
+  const membership = await prisma.userEmpresa.findUnique({
+    where: { userId_empresaId: { userId: user.id, empresaId } },
+  })
+
+  // PADRAO só acessa empresa onde tem membership ativo. MASTER/TI têm bypass.
+  if (!crossTenant) {
+    if (!membership || !membership.ativo) {
+      throw new Error("Usuário sem acesso a esta empresa.")
+    }
+  }
+
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { modulosAtivos: true },
+  })
+
+  const role: RequesterContext["role"] =
+    (membership?.role as RequesterContext["role"]) ?? (crossTenant ? "GERENTE" : "OPERADOR")
+
+  const permissoes = (membership?.permissoes as Record<string, string[]>) ?? {}
+  const modulosAtivos = Array.isArray(empresa?.modulosAtivos)
+    ? (empresa!.modulosAtivos as string[])
+    : []
 
   return {
     userId: user.id,
-    empresaId: user.empresaId,
-    role: user.role,
-    vendedorId: user.vendedorId,
-    isAdmin: user.role === 'ADMIN'
+    empresaId,
+    nivelAcesso,
+    role,
+    vendedorId: membership?.vendedorId ?? null,
+    permissoes,
+    modulosAtivos,
+    isAdmin: crossTenant || role === "GERENTE",
   }
+}
+
+/**
+ * Lista as empresas que o usuário da sessão pode acessar (para o seletor).
+ * MASTER/TI veem todas; demais, apenas as dos memberships ativos.
+ */
+export async function getEmpresasDoUsuario() {
+  const session = await getSession()
+  if (!session) throw new Error("Não autenticado.")
+
+  const user = await prisma.user.findUnique({ where: { id: session.userId } })
+  if (!user || !user.ativo) throw new Error("Não autenticado.")
+
+  const crossTenant = user.nivelAcesso === "MASTER" || user.nivelAcesso === "TI"
+
+  const empresas = crossTenant
+    ? await prisma.empresa.findMany({
+        orderBy: { nomeFantasia: "asc" },
+        select: { id: true, nomeFantasia: true, razaoSocial: true },
+      })
+    : await prisma.userEmpresa
+        .findMany({
+          where: { userId: user.id, ativo: true },
+          include: { empresa: { select: { id: true, nomeFantasia: true, razaoSocial: true } } },
+          orderBy: { empresa: { nomeFantasia: "asc" } },
+        })
+        .then((ms) => ms.map((m) => m.empresa))
+
+  return { empresaAtivaId: session.empresaId, empresas }
+}
+
+/**
+ * Troca a empresa ativa da sessão, validando que o usuário tem acesso a ela.
+ * Retorna o novo empresaAtivaId.
+ */
+export async function trocarEmpresa(empresaId: number): Promise<{ empresaAtivaId: number }> {
+  const { empresas } = await getEmpresasDoUsuario()
+  const permitido = empresas.some((e) => e.id === Number(empresaId))
+  if (!permitido) throw new Error("Empresa não permitida para este usuário.")
+
+  await setSession((await getSession())!.userId, Number(empresaId))
+  return { empresaAtivaId: Number(empresaId) }
+}
+
+/** Exige nível MASTER ou TI (administração da plataforma). Lança se não for. */
+export async function requireMasterOrTI(): Promise<RequesterContext> {
+  const ctx = await getRequesterContext()
+  if (ctx.nivelAcesso !== "MASTER" && ctx.nivelAcesso !== "TI") {
+    throw new Error("Acesso restrito à administração (TI/Master).")
+  }
+  return ctx
+}
+
+/** Exige nível MASTER (configs sensíveis: token IA, contexto, módulos ativos). */
+export async function requireMaster(): Promise<RequesterContext> {
+  const ctx = await getRequesterContext()
+  if (ctx.nivelAcesso !== "MASTER") {
+    throw new Error("Acesso restrito ao Master da plataforma.")
+  }
+  return ctx
+}
+
+// ─── Gestão de acesso de usuários (memberships + nível) — MASTER/TI ───
+
+export interface MembershipInput {
+  empresaId: number
+  role: "GERENTE" | "OPERADOR"
+  vendedorId?: number | null
+  permissoes: Record<string, string[]>
+  ativo: boolean
+}
+
+export interface SalvarUsuarioInput {
+  id?: number
+  nome: string
+  email: string
+  senha?: string
+  ativo: boolean
+  nivelAcesso: "MASTER" | "TI" | "PADRAO"
+  memberships: MembershipInput[]
+}
+
+/** Carrega os vínculos (memberships) de um usuário para o editor. */
+export async function getUserMemberships(userId: number) {
+  await requireMasterOrTI()
+  return prisma.userEmpresa.findMany({
+    where: { userId: Number(userId) },
+    select: { empresaId: true, role: true, vendedorId: true, permissoes: true, ativo: true },
+  })
+}
+
+/**
+ * Cria/atualiza usuário com nível de plataforma e seus vínculos por empresa.
+ * - MASTER/TI podem gerir usuários; definir nível MASTER/TI exige MASTER.
+ * - Sincroniza memberships: faz upsert dos enviados e remove os ausentes.
+ */
+export async function salvarUsuarioComAcesso(input: SalvarUsuarioInput) {
+  const ctx = await requireMasterOrTI()
+
+  if ((input.nivelAcesso === "MASTER" || input.nivelAcesso === "TI") && ctx.nivelAcesso !== "MASTER") {
+    throw new Error("Apenas o Master pode conceder nível MASTER ou TI.")
+  }
+
+  const email = input.email.toLowerCase().trim()
+
+  // E-mail é a identidade global (1 e-mail = 1 usuário).
+  const emailDono = await prisma.user.findFirst({
+    where: { email, ...(input.id ? { NOT: { id: input.id } } : {}) },
+    select: { id: true },
+  })
+  if (emailDono) throw new Error("Já existe um usuário com este e-mail.")
+
+  if (!input.id && !input.senha) throw new Error("Senha é obrigatória para novos usuários.")
+
+  const senhaHash = input.senha ? await bcrypt.hash(input.senha, 10) : undefined
+
+  const userId = await prisma.$transaction(async (tx) => {
+    let uid = input.id
+    if (uid) {
+      await tx.user.update({
+        where: { id: uid },
+        data: {
+          nome: input.nome,
+          email,
+          nivelAcesso: input.nivelAcesso,
+          ativo: input.ativo,
+          ...(senhaHash ? { senha: senhaHash } : {}),
+        },
+      })
+    } else {
+      const created = await tx.user.create({
+        data: {
+          nome: input.nome,
+          email,
+          senha: senhaHash!,
+          nivelAcesso: input.nivelAcesso,
+          ativo: input.ativo,
+        },
+      })
+      uid = created.id
+    }
+
+    // Sincroniza memberships
+    const empresaIdsEnviadas = input.memberships.map((m) => m.empresaId)
+    await tx.userEmpresa.deleteMany({
+      where: { userId: uid, ...(empresaIdsEnviadas.length ? { empresaId: { notIn: empresaIdsEnviadas } } : {}) },
+    })
+    for (const m of input.memberships) {
+      await tx.userEmpresa.upsert({
+        where: { userId_empresaId: { userId: uid!, empresaId: m.empresaId } },
+        update: {
+          role: m.role,
+          vendedorId: m.vendedorId ?? null,
+          permissoes: m.permissoes,
+          ativo: m.ativo,
+        },
+        create: {
+          userId: uid!,
+          empresaId: m.empresaId,
+          role: m.role,
+          vendedorId: m.vendedorId ?? null,
+          permissoes: m.permissoes,
+          ativo: m.ativo,
+        },
+      })
+    }
+    return uid
+  })
+
+  revalidatePath("/usuarios")
+  return { id: userId }
 }

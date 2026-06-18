@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_noStore as noStore } from "next/cache"
 import { Prisma } from "@prisma/client"
+import { getRequesterContext } from "./users"
 
 export async function getClientes(params: {
   page?: number
@@ -145,6 +146,7 @@ export async function getClienteById(id: number) {
 }
 
 export async function saveCliente(data: any) {
+  const { empresaId } = await getRequesterContext()
   const { id, ...rest } = data
 
   const prismaData: any = {
@@ -172,7 +174,7 @@ export async function saveCliente(data: any) {
   if (!id) {
     if (prismaData.cnpj) {
       const existing = await prisma.cliente.findFirst({
-        where: { cnpj: prismaData.cnpj, empresaId: 1 }
+        where: { cnpj: prismaData.cnpj, empresaId }
       })
       if (existing) {
         return { 
@@ -196,7 +198,7 @@ export async function saveCliente(data: any) {
         VALUES (
           ${prismaData.razaoSocial}, ${prismaData.nomeFantasia}, ${prismaData.cnpj}, ${prismaData.ie}, 
           ${prismaData.email}, ${prismaData.telefone}, ${prismaData.compradorNome}, ${prismaData.compradorTelefone}, 
-          ${prismaData.logradouro}, ${prismaData.numeroEnd}, ${prismaData.complemento}, ${prismaData.bairro}, ${prismaData.cep}, ${prismaData.cidade}, ${prismaData.estado}, 1, 
+          ${prismaData.logradouro}, ${prismaData.numeroEnd}, ${prismaData.complemento}, ${prismaData.bairro}, ${prismaData.cep}, ${prismaData.cidade}, ${prismaData.estado}, ${empresaId},
           ${prismaData.observacoes}, ${prismaData.ativo}, 
           ${rest.saldoCreditoValor || 0}, ${rest.saldoCreditoEtiquetas || 0}, ${rest.tabelaPrecoId ? Number(rest.tabelaPrecoId) : null}, ${now}, ${now}
         )

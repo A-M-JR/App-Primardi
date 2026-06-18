@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Search, Plus, Eye, TrendingUp, AlertCircle, Clock, CheckCircle2 } from "lucide-react"
+import { Search, Plus, Eye, TrendingUp, AlertCircle, Clock, CheckCircle2, ClipboardPaste } from "lucide-react"
 import { formatCurrency } from "@/lib/mock-data"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { getOrcamentos } from "@/lib/actions/orcamentos"
@@ -100,12 +100,20 @@ export default function OrcamentosPage() {
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Orçamentos e Propostas</h1>
             <p className="text-sm text-muted-foreground mt-1">Funil de vendas e acompanhamento de propostas comerciais ativas.</p>
           </div>
-          <Link href="/orcamentos/novo">
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm transition-all hover:scale-[1.02]">
-              <Plus className="size-4 mr-2" />
-              Novo Orçamento
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/orcamentos/televendas">
+              <Button variant="outline" className="shadow-sm">
+                <ClipboardPaste className="size-4 mr-2" />
+                Entrada rápida
+              </Button>
+            </Link>
+            <Link href="/orcamentos/novo">
+              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm transition-all hover:scale-[1.02]">
+                <Plus className="size-4 mr-2" />
+                Novo Orçamento
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

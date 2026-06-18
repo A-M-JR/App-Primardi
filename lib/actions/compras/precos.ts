@@ -14,7 +14,7 @@ import type { PrecoFornecedorEntry } from "@/lib/compras/types"
 export async function consolidarPrecosImportacao(importacaoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const imp = await prisma.fornecedorImportacao.findFirst({
     where: { id: importacaoId, empresaId: ctx.empresaId },
@@ -33,13 +33,20 @@ export async function consolidarPrecosImportacao(importacaoId: number, requester
     porProduto.set(linha.produtoId, list)
   }
 
+  // Busca todos os produtos de uma vez (evita N+1) e prepara os updates.
+  const produtoIds = [...porProduto.keys()]
+  const produtos = await prisma.produto.findMany({
+    where: { id: { in: produtoIds }, empresaId: ctx.empresaId },
+    select: { id: true, precosFornecedor: true },
+  })
+  const produtoById = new Map(produtos.map((p) => [p.id, p]))
+  const agora = new Date().toISOString()
+
+  const updates = []
   for (const [produtoId, grupo] of porProduto) {
-    const linha = grupo[0]
-    const produto = await prisma.produto.findFirst({
-      where: { id: produtoId, empresaId: ctx.empresaId },
-      select: { precosFornecedor: true },
-    })
+    const produto = produtoById.get(produtoId)
     if (!produto) continue
+    const linha = grupo[0]
 
     const precos = parsePrecosFornecedor(produto.precosFornecedor)
     const entry: PrecoFornecedorEntry = {
@@ -53,14 +60,18 @@ export async function consolidarPrecosImportacao(importacaoId: number, requester
       laboratorio: linha.laboratorio,
       matchTipo: linha.matchTipo,
       importacaoId,
-      atualizadoEm: new Date().toISOString(),
+      atualizadoEm: agora,
     }
 
-    await prisma.produto.update({
-      where: { id: produtoId },
-      data: { precosFornecedor: toPrecosJson(setPrecoFornecedor(precos, imp.fornecedorId, entry)) },
-    })
+    updates.push(
+      prisma.produto.update({
+        where: { id: produtoId },
+        data: { precosFornecedor: toPrecosJson(setPrecoFornecedor(precos, imp.fornecedorId, entry)) },
+      })
+    )
   }
+
+  if (updates.length) await prisma.$transaction(updates)
 
   revalidatePath("/compras/importacoes")
   return { consolidados: linhas.length }

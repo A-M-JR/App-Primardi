@@ -6,7 +6,7 @@ import { unstable_noStore as noStore } from "next/cache"
 
 export async function getCategorias(requesterId?: number) {
   noStore()
-  const ctx = requesterId ? await getRequesterContext(requesterId) : { empresaId: 1, isAdmin: true }
+  const ctx = await getRequesterContext(requesterId)
   
   return prisma.categoria.findMany({
     where: { empresaId: ctx.empresaId },
@@ -15,7 +15,7 @@ export async function getCategorias(requesterId?: number) {
 }
 
 export async function saveCategoria(data: any, requesterId?: number) {
-  const ctx = requesterId ? await getRequesterContext(requesterId) : { empresaId: 1, isAdmin: true }
+  const ctx = await getRequesterContext(requesterId)
   
   if (data.id) {
     return prisma.categoria.update({

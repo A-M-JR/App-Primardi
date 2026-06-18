@@ -31,6 +31,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -149,6 +150,7 @@ export default function CotacaoDetalhePage({
   const { currentUser } = useAuth()
   const [copiado, setCopiado] = useState<number | null>(null)
   const [gerandoLink, setGerandoLink] = useState<number | null>(null)
+  const [processando, setProcessando] = useState(false)
   const [busca, setBusca] = useState("")
   const [buscaDebounced, setBuscaDebounced] = useState("")
   const [page, setPage] = useState(1)
@@ -230,22 +232,28 @@ export default function CotacaoDetalhePage({
   }
 
   async function handleMenorPreco() {
+    setProcessando(true)
     try {
       const res = await aplicarVencedoresMenorPreco(cotacaoId, currentUser?.id)
       toast.success(`${res.aplicados} vencedor(es) por menor preço.`)
       refetch()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro.")
+    } finally {
+      setProcessando(false)
     }
   }
 
   async function handleGerarPedidos() {
+    setProcessando(true)
     try {
       const pedidos = await gerarPedidosCompraFromCotacao(cotacaoId, currentUser?.id)
       toast.success(`${pedidos.length} pedido(s) gerado(s).`)
       refetch()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro.")
+    } finally {
+      setProcessando(false)
     }
   }
 
@@ -319,12 +327,12 @@ export default function CotacaoDetalhePage({
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={handleMenorPreco}>
-              <Sparkles className="size-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={handleMenorPreco} disabled={processando}>
+              {processando ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Sparkles className="size-4 mr-2" />}
               Menor preço em tudo
             </Button>
-            <Button size="sm" onClick={handleGerarPedidos} disabled={!podeGerarPedidos}>
-              <ShoppingCart className="size-4 mr-2" />
+            <Button size="sm" onClick={handleGerarPedidos} disabled={!podeGerarPedidos || processando}>
+              {processando ? <Loader2 className="size-4 mr-2 animate-spin" /> : <ShoppingCart className="size-4 mr-2" />}
               Gerar pedidos
             </Button>
           </div>

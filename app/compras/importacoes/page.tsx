@@ -34,6 +34,7 @@ import {
 import { FornecedorFormDialog } from "@/components/fornecedor-form-dialog"
 import { ComprasPageHeader } from "@/components/compras/compras-page-header"
 import { ComprasListFiltros } from "@/components/compras/compras-list-filtros"
+import { ComprasPagination } from "@/components/compras/compras-pagination"
 import { NovaImportacaoDialog } from "@/components/compras/nova-importacao-dialog"
 import { STATUS_IMPORTACAO_OPTS, labelStatus } from "@/lib/compras/list-filters"
 
@@ -61,6 +62,7 @@ export default function ImportacoesPage() {
     setFornecedorId,
     dateRange,
     setDateRange,
+    setPage,
     filtros,
     hasActiveFilters,
     clearFilters,
@@ -91,7 +93,7 @@ export default function ImportacoesPage() {
     }
   }
 
-  const impExcluir = importacoes?.find((i) => i.id === excluirId)
+  const impExcluir = importacoes?.data?.find((i) => i.id === excluirId)
 
   return (
     <AppShell>
@@ -143,7 +145,7 @@ export default function ImportacoesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {importacoes?.map((imp) => (
+                  {importacoes?.data?.map((imp) => (
                     <TableRow key={imp.id} className="hover:bg-muted/30">
                       <TableCell>
                         <div className="flex items-center gap-2 min-w-0">
@@ -184,7 +186,7 @@ export default function ImportacoesPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!importacoes?.length && (
+                  {!importacoes?.data?.length && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
                         Nenhuma importação encontrada.
@@ -194,6 +196,12 @@ export default function ImportacoesPage() {
                 </TableBody>
               </Table>
             </div>
+            <ComprasPagination
+              page={importacoes?.page ?? 1}
+              totalPages={importacoes?.totalPages ?? 1}
+              total={importacoes?.total ?? 0}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
 

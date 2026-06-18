@@ -24,6 +24,7 @@ import { getClientes, getClienteById } from "@/lib/actions/clientes"
 import { getVendedores } from "@/lib/actions/vendedores"
 import { getOrcamentos, saveOrcamento } from "@/lib/actions/orcamentos"
 import { getProdutos } from "@/lib/actions/produtos"
+import { ProdutoCombobox } from "@/components/produto-combobox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useState, useEffect, useRef, Suspense } from "react"
@@ -85,6 +86,7 @@ function NovoOrcamentoContent() {
   const [itensCreditoQtd, setItensCreditoQtd] = useState<Record<string, number>>({}) // id -> quantidade bonificada
   const [ocCliente, setOcCliente] = useState("")
   const aiProcessedRef = useRef(false) // 🔒 Trava contra loop de automação
+  const televendasRef = useRef(false) // 🔒 Trava de hidratação da lista (Televendas)
 
   useEffect(() => {
     Promise.all([
@@ -166,6 +168,50 @@ function NovoOrcamentoContent() {
       }
     }
   }, [searchParams, clientes, clienteId, itens.length, observacoes])
+
+  // 📋 Hidratação a partir da Entrada rápida (Televendas): cliente + itens já casados.
+  useEffect(() => {
+    if (televendasRef.current || loading || produtosList.length === 0) return
+    const raw = typeof window !== "undefined" ? sessionStorage.getItem("televendas_payload") : null
+    if (!raw) return
+    televendasRef.current = true
+    sessionStorage.removeItem("televendas_payload")
+    try {
+      const payload = JSON.parse(raw) as {
+        clienteId?: number
+        itens: { produtoId: number; quantidade: number }[]
+      }
+      const cli = payload.clienteId ? clientes.find((c) => c.id === payload.clienteId) : undefined
+      if (payload.clienteId) setClienteId(payload.clienteId)
+      const novos = payload.itens
+        .map(({ produtoId, quantidade }) => {
+          const etq = produtosList.find((e) => e.id === produtoId)
+          if (!etq) return null
+          let preco = etq.precoBase || 0
+          if (cli?.tabelaPrecoId && etq.tabelasPreco) {
+            const t = etq.tabelasPreco.find((tp: any) => tp.tabelaPrecoId === cli.tabelaPrecoId)
+            if (t?.preco != null) preco = t.preco
+          }
+          const eanStr = etq.ean ? ` | EAN: ${etq.ean}` : ""
+          const descStr = etq.descricao ? `\n${etq.descricao}` : ""
+          const descricao = `${etq.nome} \nRef: ${etq.codigo}${eanStr}${descStr}`.trim()
+          return {
+            id: Math.random().toString(36).slice(2, 11),
+            produtoId: etq.id,
+            descricao,
+            quantidade: quantidade || 1,
+            unidade: etq.unidadePadrao || "UN",
+            precoUnitario: preco,
+            observacao: "",
+          } as NovoItem
+        })
+        .filter(Boolean) as NovoItem[]
+      if (novos.length) setItens((prev) => [...prev, ...novos])
+      toast.success("Itens importados da lista. Revise e salve.")
+    } catch {
+      /* payload inválido — ignora */
+    }
+  }, [loading, produtosList, clientes])
 
   const clienteSelecionado = clientes.find((c) => c.id === clienteId)
   const historicoOrcamentos = clienteId ? todosOrcamentos.filter(o => o.clienteId === clienteId) : []
@@ -678,49 +724,14 @@ function NovoOrcamentoContent() {
               Itens e Produtos
             </CardTitle>
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <Popover open={openCatalogo} onOpenChange={setOpenCatalogo}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={openCatalogo}
-                    className="w-full sm:w-[250px] h-9 text-xs justify-between bg-background font-normal"
-                  >
-                    Pesquisar catálogo geral...
-                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[300px] p-0" align="end">
-                  <Command filter={(value, search) => {
-                    if (value.toLowerCase().includes(search.toLowerCase())) return 1
-                    return 0
-                  }}>
-                    <CommandInput placeholder="Buscar produto (cód ou nome)..." />
-                    <CommandList>
-                      <CommandEmpty>Nenhuma produto encontrada.</CommandEmpty>
-                      <CommandGroup>
-                        {produtosList.filter(etq => {
-                          // Se não há cliente selecionado, mostra apenas produtos públicas
-                          if (!clienteId) return !etq.clientesIds || etq.clientesIds.length === 0
-
-                          // Se há cliente, mostra públicas OU autorizadas para esse cliente
-                          const isPublic = !etq.clientesIds || etq.clientesIds.length === 0
-                          const isAuthorized = etq.clientesIds?.includes(Number(clienteId))
-                          return isPublic || isAuthorized
-                        }).map((etq) => (
-                          <CommandItem
-                            key={etq.id}
-                            value={`${etq.codigo} ${etq.nome}`}
-                            onSelect={() => adicionarProdutoCatalogo(etq.id.toString())}
-                          >
-                            {etq.codigo} - {etq.nome}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <div className="w-full sm:w-[260px]">
+                <ProdutoCombobox
+                  clienteId={clienteId ? Number(clienteId) : undefined}
+                  somenteVisiveis
+                  triggerLabel="Pesquisar catálogo geral..."
+                  onSelect={(p) => adicionarProdutoCatalogo(p.id.toString())}
+                />
+              </div>
               <Button variant="default" size="sm" onClick={adicionarItem} className="h-9 shrink-0">
                 <Plus className="size-4 mr-1" />
                 Item Avulso

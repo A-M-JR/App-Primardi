@@ -6,7 +6,7 @@ import { unstable_noStore as noStore } from "next/cache"
 
 export async function getFornecedores(requesterId?: number) {
   noStore()
-  const ctx = requesterId ? await getRequesterContext(requesterId) : { empresaId: 1, isAdmin: true }
+  const ctx = await getRequesterContext(requesterId)
   
   return prisma.fornecedor.findMany({
     where: { empresaId: ctx.empresaId },
@@ -15,7 +15,7 @@ export async function getFornecedores(requesterId?: number) {
 }
 
 export async function saveFornecedor(data: any, requesterId?: number) {
-  const ctx = requesterId ? await getRequesterContext(requesterId) : { empresaId: 1, isAdmin: true }
+  const ctx = await getRequesterContext(requesterId)
   
   if (data.id) {
     return prisma.fornecedor.update({

@@ -21,6 +21,7 @@ import { Plus, Eye } from "lucide-react"
 import { PlanejamentoAjuda } from "@/components/compras/planejamento-ajuda"
 import { ComprasPageHeader } from "@/components/compras/compras-page-header"
 import { ComprasListFiltros } from "@/components/compras/compras-list-filtros"
+import { ComprasPagination } from "@/components/compras/compras-pagination"
 import { NovoPlanejamentoDialog } from "@/components/compras/novo-planejamento-dialog"
 import { STATUS_PLANEJAMENTO_OPTS, labelStatus } from "@/lib/compras/list-filters"
 import { useState } from "react"
@@ -35,6 +36,7 @@ export default function PlanejamentosPage() {
     setStatus,
     dateRange,
     setDateRange,
+    setPage,
     filtros,
     hasActiveFilters,
     clearFilters,
@@ -87,7 +89,7 @@ export default function PlanejamentosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {planejamentos?.map((p) => (
+                  {planejamentos?.data?.map((p) => (
                     <TableRow key={p.id} className="hover:bg-muted/30">
                       <TableCell>
                         <div>
@@ -118,7 +120,7 @@ export default function PlanejamentosPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!planejamentos?.length && (
+                  {!planejamentos?.data?.length && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
                         Nenhum planejamento encontrado.
@@ -128,6 +130,12 @@ export default function PlanejamentosPage() {
                 </TableBody>
               </Table>
             </div>
+            <ComprasPagination
+              page={planejamentos?.page ?? 1}
+              totalPages={planejamentos?.totalPages ?? 1}
+              total={planejamentos?.total ?? 0}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
 

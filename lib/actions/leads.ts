@@ -1,10 +1,10 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { getRequesterContext } from "./users"
 
 export async function getKanbanData(requesterId?: number) {
-  // Simulating the pattern used in the rest of the application
-  const empresaId = 1; // Assuming single tenant for now or fallback
+  const { empresaId } = await getRequesterContext(requesterId);
 
 
   // 1. Get Funil Statuses
@@ -41,7 +41,7 @@ export async function getKanbanData(requesterId?: number) {
         { clienteId: { not: null } }
       ]
     },
-    include: { origem: true }
+    include: { origem: true, vendedor: { select: { nome: true } } }
   });
 
   // Transform for Kanban
@@ -87,6 +87,9 @@ export async function getKanbanData(requesterId?: number) {
       telefone: lead.telefone,
       cep: lead.cep,
       observacoes: lead.observacoes,
+      temperatura: lead.temperatura || null,
+      vendedor: lead.vendedor?.nome || null,
+      movidoEm: (lead.movidoEm ?? lead.criadoEm).toISOString(),
       clienteId: lead.clienteId
     };
 
@@ -111,18 +114,18 @@ export async function getKanbanData(requesterId?: number) {
 }
 
 export async function updateLeadStatus(leadIdNum: number, newStatusId: number, requesterId?: number) {
-  const empresaId = 1; // Assuming single tenant fallback
+  const { empresaId } = await getRequesterContext(requesterId);
 
   await prisma.lead.update({
     where: { id: leadIdNum, empresaId: empresaId },
-    data: { statusId: newStatusId }
+    data: { statusId: newStatusId, movidoEm: new Date() }
   });
 
   return { success: true };
 }
 
 export async function createLead(data: any, requesterId?: number) {
-  const empresaId = 1;
+  const { empresaId } = await getRequesterContext(requesterId);
 
   let statusId = data.statusId ? Number(data.statusId) : null;
   if (!statusId) {

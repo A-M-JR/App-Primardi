@@ -470,7 +470,7 @@ export async function savePedido(data: any, requesterId: number) {
     })
     // Se for gerado a partir de um orçamento, atualiza o status do orçamento para "Aprovado"
     if (created.orcamentoId) {
-      const statusAprovadoId = await getOrCreateStatus(ctx.empresaId || 1, 'aprovado', ModuloStatus.ORCAMENTO)
+      const statusAprovadoId = await getOrCreateStatus(ctx.empresaId, 'aprovado', ModuloStatus.ORCAMENTO)
       await prisma.orcamento.update({
         where: { id: created.orcamentoId },
         data: { statusId: statusAprovadoId }
@@ -534,4 +534,51 @@ export async function savePedido(data: any, requesterId: number) {
     revalidatePath(`/pedidos/${id}`)
     return updated
   }
+}
+
+export interface ItemSeparacao {
+  id: number
+  numero: string
+  cliente: string
+  status: string
+  statusCor: string | null
+  itens: number
+  prazoEntrega: string | null
+  totalGeral: number
+}
+
+/**
+ * Fila de separação/expedição: pedidos ativos ainda não entregues/cancelados,
+ * priorizados pelo prazo de entrega (mais urgentes primeiro).
+ */
+export async function getFilaSeparacao(requesterId?: number): Promise<ItemSeparacao[]> {
+  noStore()
+  const ctx = requesterId ? await getRequesterContext(requesterId) : await getRequesterContext()
+
+  const pedidos = await prisma.pedido.findMany({
+    where: { empresaId: ctx.empresaId, ativo: true },
+    orderBy: [{ prazoEntrega: { sort: "asc", nulls: "last" } }, { criadoEm: "asc" }],
+    take: 300,
+    include: {
+      cliente: { select: { razaoSocial: true } },
+      status: { select: { nome: true, cor: true } },
+      _count: { select: { itens: true } },
+    },
+  })
+
+  return pedidos
+    .filter((p) => {
+      const s = (p.status?.nome || "").toLowerCase()
+      return !s.includes("entregue") && !s.includes("cancel")
+    })
+    .map((p) => ({
+      id: p.id,
+      numero: p.numero,
+      cliente: p.cliente?.razaoSocial || "—",
+      status: p.status?.nome || "—",
+      statusCor: p.status?.cor || null,
+      itens: p._count.itens,
+      prazoEntrega: p.prazoEntrega ? p.prazoEntrega.toISOString() : null,
+      totalGeral: p.totalGeral,
+    }))
 }

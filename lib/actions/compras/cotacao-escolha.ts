@@ -20,7 +20,7 @@ export async function escolherFornecedorItem(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -78,7 +78,7 @@ export async function escolherFornecedorItem(
 export async function sugerirVencedoresMenorPreco(cotacaoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const cotacao = await getMatrizCotacao(cotacaoId, ctx.userId)
   if (!cotacao) throw new Error("Cotação não encontrada.")

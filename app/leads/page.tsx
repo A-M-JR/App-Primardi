@@ -3,7 +3,7 @@
 import { AppShell } from "@/components/app-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Target, Plus, Settings, GripVertical, Calendar, DollarSign, Building2 } from "lucide-react"
+import { Target, Plus, Settings, Calendar, DollarSign, Building2, Clock } from "lucide-react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd"
@@ -35,6 +35,12 @@ type DataState = {
   columns: Record<string, Column>;
   columnOrder: string[];
 };
+
+const TEMP_CFG = {
+  Frio: { bar: "#0ea5e9", badge: "bg-sky-500/10 text-sky-700 dark:text-sky-400" },
+  Morno: { bar: "#f59e0b", badge: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  Quente: { bar: "#ef4444", badge: "bg-red-500/10 text-red-700 dark:text-red-400" },
+} as const
 
 export default function LeadsPage() {
   const [data, setData] = useState<DataState | null>(null);
@@ -188,19 +194,27 @@ export default function LeadsPage() {
                 {data.columnOrder.map((columnId) => {
                   const column = data.columns[columnId];
                   const leads = column.leadIds.map((leadId) => data.leads[leadId]);
+                  const totalValor = leads.reduce((s, l) => s + (l.value || 0), 0);
 
                   return (
                     <div key={column.id} className="flex flex-col w-[85vw] sm:w-80 shrink-0 h-full max-h-full">
-                      <div className="flex items-center justify-between mb-3 px-1">
-                        <h3 className="font-bold text-[15px] flex items-center gap-2 text-foreground/90">
-                          <span className={`size-2.5 rounded-full ${column.color} shadow-sm`} />
-                          {column.title}
-                          <span className="text-[11px] bg-muted/80 px-2 py-0.5 rounded-full text-muted-foreground ml-1 font-semibold border border-border/50">
-                            {leads.length}
-                          </span>
-                        </h3>
+                      <div className="rounded-xl border border-border/50 bg-card mb-3 overflow-hidden shadow-sm">
+                        <div className={`h-1 w-full ${column.color}`} />
+                        <div className="flex items-center justify-between px-3 py-2.5">
+                          <h3 className="font-semibold text-sm flex items-center gap-2 text-foreground/90 min-w-0">
+                            <span className="truncate">{column.title}</span>
+                            <span className="text-[11px] bg-muted px-1.5 py-0.5 rounded-full text-muted-foreground font-semibold shrink-0">
+                              {leads.length}
+                            </span>
+                          </h3>
+                          {totalValor > 0 && (
+                            <span className="text-[12px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                              {formatCurrency(totalValor)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      
+
                       <Droppable droppableId={column.id}>
                         {(provided, snapshot) => (
                           <div
@@ -220,14 +234,24 @@ export default function LeadsPage() {
 
                             {leads.map((lead, index) => (
                               <Draggable key={lead.id} draggableId={lead.id} index={index}>
-                                {(provided, snapshot) => (
+                                {(provided, snapshot) => {
+                                  const tcfg = TEMP_CFG[lead.temperatura as keyof typeof TEMP_CFG]
+                                  const diasParado = lead.movidoEm
+                                    ? Math.floor((Date.now() - new Date(lead.movidoEm).getTime()) / 86400000)
+                                    : 0
+                                  const paradoCls = diasParado >= 7
+                                    ? "bg-red-500/10 text-red-700 dark:text-red-400"
+                                    : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                  return (
                                   <Card
                                     ref={provided.innerRef}
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
+                                    style={{ ...provided.draggableProps.style, borderLeftColor: tcfg?.bar }}
                                     className={`
-                                      cursor-grab active:cursor-grabbing hover:border-primary/40 transition-all shadow-sm
-                                      ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl ring-2 ring-primary/20 ring-offset-1 z-50 bg-card' : 'bg-card'}
+                                      cursor-grab active:cursor-grabbing hover:border-primary/40 transition-shadow shadow-sm border-l-4
+                                      ${tcfg ? "" : "border-l-transparent"}
+                                      ${snapshot.isDragging ? 'shadow-xl ring-2 ring-primary/20 scale-[1.02] bg-card' : 'bg-card'}
                                     `}
                                     onClick={() => {
                                       setSelectedLead(lead as any);
@@ -239,9 +263,13 @@ export default function LeadsPage() {
                                         <h4 className="font-bold text-sm leading-tight group-hover:text-primary transition-colors flex-1 break-words">
                                           {lead.name}
                                         </h4>
-                                        <GripVertical className="size-4 text-muted-foreground/40 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        {tcfg && (
+                                          <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded ${tcfg.badge}`}>
+                                            {lead.temperatura}
+                                          </span>
+                                        )}
                                       </div>
-                                      
+
                                       <div className="flex flex-col gap-1.5 mt-1">
                                         <p className="text-[13px] text-muted-foreground flex items-center gap-1.5">
                                           <Building2 className="size-3.5 shrink-0" />
@@ -250,6 +278,19 @@ export default function LeadsPage() {
                                         <p className="text-[11px] text-muted-foreground/70 flex items-center gap-1.5">
                                           <Calendar className="size-3.5 shrink-0" />
                                           {lead.date}
+                                          {diasParado >= 3 && (
+                                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold ${paradoCls}`}>
+                                              <Clock className="size-3" /> {diasParado}d
+                                            </span>
+                                          )}
+                                          {lead.vendedor && (
+                                            <span className="inline-flex items-center gap-1 ml-auto">
+                                              <span className="flex size-4 items-center justify-center rounded-full bg-primary/10 text-primary text-[8px] font-bold">
+                                                {lead.vendedor.charAt(0).toUpperCase()}
+                                              </span>
+                                              <span className="truncate max-w-[80px]">{lead.vendedor.split(" ")[0]}</span>
+                                            </span>
+                                          )}
                                         </p>
                                       </div>
 
@@ -264,7 +305,8 @@ export default function LeadsPage() {
                                       </div>
                                     </CardContent>
                                   </Card>
-                                )}
+                                  )
+                                }}
                               </Draggable>
                             ))}
                             {provided.placeholder}

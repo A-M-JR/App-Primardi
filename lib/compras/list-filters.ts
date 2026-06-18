@@ -4,6 +4,22 @@ export type ComprasListFiltros = {
   fornecedorId?: number
   dataInicio?: string
   dataFim?: string
+  page?: number
+}
+
+export type Paginado<T> = {
+  data: T[]
+  total: number
+  page: number
+  totalPages: number
+}
+
+export const COMPRAS_PAGE_SIZE = 20
+
+/** Calcula skip/take a partir do filtro de página (1-based). */
+export function buildPaginacao(page?: number, pageSize: number = COMPRAS_PAGE_SIZE) {
+  const p = Math.max(1, page ?? 1)
+  return { skip: (p - 1) * pageSize, take: pageSize, page: p, pageSize }
 }
 
 export function buildCriadoEmFilter(dataInicio?: string, dataFim?: string) {
@@ -41,6 +57,7 @@ export const STATUS_COTACAO_OPTS = [
 
 export const STATUS_PEDIDO_OPTS = [
   { value: "RASCUNHO", label: "Rascunho" },
+  { value: "AGUARDANDO_APROVACAO", label: "Aguardando aprovação" },
   { value: "ENVIADO", label: "Enviado" },
   { value: "CONFIRMADO", label: "Confirmado" },
   { value: "RECEBIDO_PARCIAL", label: "Recebido parcial" },

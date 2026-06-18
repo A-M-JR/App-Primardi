@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Save, Building2, MapPin, Contact, FileText, Factory, UserCircle, Sparkles, Plus, Trash2, Wallet, PlusCircle, MinusCircle, History, Tag, ChevronRight } from "lucide-react"
+import { ArrowLeft, Save, Building2, MapPin, Contact, FileText, Factory, UserCircle, Sparkles, Plus, Trash2, Wallet, PlusCircle, MinusCircle, History, Tag, ChevronRight, Target } from "lucide-react"
+import { ClienteCrm } from "@/components/cliente-crm"
 import { formatCurrency } from "@/lib/mock-data"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { getClienteById, saveCliente } from "@/lib/actions/clientes"
@@ -19,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { use, useState, useEffect } from "react"
 import { toast } from "sonner"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 // Helpers para Mascaras
 const maskCNPJ = (value: string) => {
@@ -65,6 +66,8 @@ export default function ClienteDetailPage({
 }) {
   const { id } = use(params)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const tabInicial = searchParams.get("tab") || "geral"
   
   const [clienteOrig, setClienteOrig] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -374,11 +377,15 @@ export default function ClienteDetailPage({
           </div>
         </div>
 
-          <Tabs defaultValue="geral" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6 bg-muted/20 p-1">
+          <Tabs defaultValue={tabInicial} className="w-full">
+          <TabsList className="grid w-full grid-cols-4 mb-6 bg-muted/20 p-1">
             <TabsTrigger value="geral" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
               <Building2 className="size-4 mr-2" />
               Dados Gerais
+            </TabsTrigger>
+            <TabsTrigger value="crm" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Target className="size-4 mr-2" />
+              CRM
             </TabsTrigger>
             <TabsTrigger value="historico" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
               <History className="size-4 mr-2" />
@@ -573,6 +580,10 @@ export default function ClienteDetailPage({
 
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="crm" className="animate-in fade-in duration-300">
+            <ClienteCrm clienteId={Number(id)} />
           </TabsContent>
 
           <TabsContent value="historico" className="animate-in fade-in duration-300">

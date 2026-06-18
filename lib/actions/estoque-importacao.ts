@@ -264,7 +264,7 @@ export async function getEstoqueImportacoes(requesterId?: number) {
 
     ? await getRequesterContext(requesterId)
 
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
 
 
@@ -312,7 +312,7 @@ export async function getEstoqueImportacaoDetalhe(
 
     ? await getRequesterContext(requesterId)
 
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
 
 
@@ -398,7 +398,7 @@ export async function processarImportacaoEstoque(params: {
 
     ? await getRequesterContext(params.requesterId)
 
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
 
 

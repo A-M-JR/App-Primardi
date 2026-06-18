@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { criarPlanejamento } from "@/lib/actions/compras/planejamento"
 import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
 
 type Props = {
   open: boolean
@@ -40,12 +41,12 @@ export function NovoPlanejamentoDialog({ open, onOpenChange, requesterId, onSucc
         requesterId
       )
       toast.success("Planejamento criado.")
-      handleOpenChange(false)
       onSuccess?.()
+      // Navega direto para o planejamento criado. Mantém o estado "criando"
+      // (spinner) até a navegação concluir, sem voltar para a listagem.
       router.push(`/compras/planejamentos/${p.id}`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao criar.")
-    } finally {
       setCriando(false)
     }
   }
@@ -73,8 +74,9 @@ export function NovoPlanejamentoDialog({ open, onOpenChange, requesterId, onSucc
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={criando}>
             Cancelar
           </Button>
-          <Button onClick={() => void handleCriar()} disabled={criando}>
-            {criando ? "Criando..." : "Criar"}
+          <Button onClick={() => void handleCriar()} disabled={criando} className="gap-2">
+            {criando && <Loader2 className="size-4 animate-spin" />}
+            {criando ? "Abrindo..." : "Criar"}
           </Button>
         </DialogFooter>
       </DialogContent>

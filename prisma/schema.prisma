@@ -20,6 +20,15 @@ enum UserRole {
   @@map("crm_user_role")
 }
 
+// Nível de acesso de plataforma (cross-tenant). Ver docs/PLANO_MULTITENANCY.md.
+enum NivelAcesso {
+  MASTER // dono da plataforma: tudo, incl. token IA / contexto IA / módulos ativos
+  TI     // suporte: tudo menos as 3 configs sensíveis do MASTER
+  PADRAO // usuário comum: acesso só via memberships
+
+  @@map("crm_nivel_acesso")
+}
+
 enum TipoCredito {
   ETIQUETA
   VALOR
@@ -72,10 +81,11 @@ model Empresa {
   corSidebar        String?
   corPrimaria       String?
   logoUrl           String?
+  modulosAtivos     Json     @default("[]") // módulos habilitados (só MASTER altera)
   criadoEm          DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  users                User[]
+  userEmpresas         UserEmpresa[]
   vendedores           Vendedor[]
   clientes             Cliente[]
   produtos             Produto[]
@@ -97,6 +107,9 @@ model Empresa {
   origensLead          OrigemLead[]
   statusFunil          FunilStatus[]
   leads                Lead[]
+  clienteAtividades    ClienteAtividade[]
+  devedores            Devedor[]
+  cobrancaTitulos      CobrancaTitulo[]
 
   // Compras
   compraConfig           CompraConfigEmpresa?
@@ -107,6 +120,17 @@ model Empresa {
   compraAuditorias       CompraAuditoria[]
   estoqueImportacoes     EstoqueImportacao[]
 
+  // Licitações / Faturamento
+  licitacoes             Licitacao[]
+  empenhos               Empenho[]
+
+  // Promoções
+  promocoes              Promocao[]
+
+  // Chamados / Suporte
+  departamentos          Departamento[]
+  chamados               Chamado[]
+
   @@map("crm_empresas")
 }
 
@@ -115,26 +139,20 @@ model Empresa {
 // ─────────────────────────────────────────────
 
 model User {
-  id         Int      @id @default(autoincrement())
-  empresaId  Int
-  nome       String
-  email      String
-  senha      String
-  role       UserRole @default(OPERADOR)
-  ativo      Boolean  @default(true)
-  criadoEm   DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  vendedorId Int?
+  id          Int         @id @default(autoincrement())
+  nome        String
+  email       String      @unique // identidade global do usuário
+  senha       String
+  nivelAcesso NivelAcesso @default(PADRAO)
+  ativo       Boolean     @default(true)
+  criadoEm    DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  empresa      Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  vendedor     Vendedor?       @relation(fields: [vendedorId], references: [id], onDelete: SetNull)
-  chatMessages AIChatMessage[]
+  memberships      UserEmpresa[]
+  chatMessages     AIChatMessage[]
   compraAuditorias CompraAuditoria[]
+  departamentos    DepartamentoUsuario[]
 
-  @@unique([empresaId, email])
-  @@index([empresaId])
-  @@index([role])
-  @@index([vendedorId])
   @@index([ativo])
   @@map("crm_users")
 }
@@ -151,17 +169,40 @@ model Vendedor {
   criadoEm  DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa    Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  users      User[]
-  orcamentos Orcamento[]
-  pedidos    Pedido[]
-  leads      Lead[]
+  empresa      Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  userEmpresas UserEmpresa[]
+  orcamentos   Orcamento[]
+  pedidos      Pedido[]
+  leads        Lead[]
 
   @@unique([empresaId, email])
   @@index([empresaId])
   @@index([nome])
   @@index([ativo])
   @@map("crm_vendedores")
+}
+
+// Vínculo usuário ↔ empresa (multitenancy N:N). Carrega role + permissões por empresa.
+model UserEmpresa {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  empresaId  Int
+  role       UserRole @default(OPERADOR) // role POR empresa (GERENTE | OPERADOR)
+  permissoes Json     @default("{}") // { modulo: [acao,...] } — governa OPERADOR
+  vendedorId Int? // "vendedor" = OPERADOR com vendedorId vinculado
+  ativo      Boolean  @default(true)
+  criadoEm   DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  vendedor Vendedor? @relation(fields: [vendedorId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, empresaId])
+  @@index([empresaId])
+  @@index([userId])
+  @@index([vendedorId])
+  @@map("crm_user_empresas")
 }
 
 // ─────────────────────────────────────────────
@@ -196,9 +237,15 @@ model Cliente {
   saldoCreditoProdutos  Int       @default(0)
   saldoCreditoValor     Float     @default(0)
   tabelaPrecoId         Int?
+  // CRM / funil do cliente
+  temperatura           String?    // Frio | Morno | Quente
+  funilStatusId         Int?
+  proximoContato        DateTime?  // próximo retorno agendado
 
   empresa              Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   tabelaPreco          TabelaPreco?           @relation(fields: [tabelaPrecoId], references: [id])
+  funilStatus          FunilStatus?           @relation(fields: [funilStatusId], references: [id], onDelete: SetNull)
+  atividades           ClienteAtividade[]
   produtosExclusivos   ClienteProduto[]
   itensExclusivos      ItemExclusivoCliente[]
   movimentacoesCredito MovimentacaoCredito[]
@@ -206,6 +253,7 @@ model Cliente {
   pedidos              Pedido[]
   aiSugestoes          AISugestao[]
   leads                Lead[]
+  licitacoes           Licitacao[]
 
   @@unique([empresaId, cnpj])
   @@index([empresaId])
@@ -215,6 +263,7 @@ model Cliente {
   @@index([ativo])
   @@index([ultimaCompra])
   @@index([criadoEm])
+  @@index([empresaId, proximoContato])
   @@map("crm_clientes")
 }
 
@@ -289,6 +338,8 @@ model Produto {
   compra             Float?
   bloqCompra         Boolean  @default(false)
   precosFornecedor   Json?
+  pmvg               Float?    // preço-teto venda ao governo (CMED/ANVISA)
+  pmvgAtualizadoEm   DateTime? // quando o EAN/PMVG foi conciliado com a CMED
   criadoEm      DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -303,6 +354,8 @@ model Produto {
   planejamentoItens    PlanejamentoCompraItem[]
   cotacaoItens         CotacaoCompraItem[]
   itensPedidoCompra    ItemPedidoCompra[]
+  licitacaoItens       LicitacaoItem[]
+  promocaoItens        PromocaoItem[]
 
   @@unique([empresaId, codigo])
   @@index([empresaId])
@@ -750,8 +803,9 @@ model FunilStatus {
   criadoEm  DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  leads   Lead[]
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  leads    Lead[]
+  clientes Cliente[]
 
   @@unique([empresaId, ordem])
   @@unique([empresaId, nome])
@@ -777,6 +831,7 @@ model Lead {
   clienteId      Int?
   ativo          Boolean   @default(true)
   dataConversao  DateTime?
+  movidoEm       DateTime? // última mudança de etapa (para "parado há X dias")
   criadoEm       DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -793,6 +848,39 @@ model Lead {
   @@index([clienteId])
   @@index([ativo])
   @@map("crm_leads")
+}
+
+enum TipoAtividadeCliente {
+  LIGACAO
+  VISITA
+  EMAIL
+  WHATSAPP
+  REUNIAO
+  PROPOSTA
+  NOTA
+  OUTRO
+
+  @@map("crm_tipo_atividade_cliente")
+}
+
+// Atividades/follow-up do cliente (CRM dentro do cadastro).
+model ClienteAtividade {
+  id              Int                  @id @default(autoincrement())
+  empresaId       Int
+  clienteId       Int
+  tipo            TipoAtividadeCliente @default(NOTA)
+  descricao       String
+  criadoPorUserId Int?
+  proximoContato  DateTime? // follow-up agendado a partir desta atividade
+  concluida       Boolean              @default(false)
+  criadoEm        DateTime             @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId, criadoEm])
+  @@index([empresaId, proximoContato])
+  @@map("crm_cliente_atividades")
 }
 
 // ─────────────────────────────────────────────
@@ -866,6 +954,7 @@ enum StatusCotacaoFornecedor {
 
 enum StatusPedidoCompra {
   RASCUNHO
+  AGUARDANDO_APROVACAO
   ENVIADO
   CONFIRMADO
   RECEBIDO_PARCIAL
@@ -944,6 +1033,7 @@ model PlanejamentoCompra {
   cotacao       CotacaoCompra?
 
   @@unique([empresaId, numero])
+  @@index([empresaId, status, criadoEm])
   @@map("crm_planejamento_compra")
 }
 
@@ -994,6 +1084,7 @@ model CotacaoCompra {
   pedidosCompra PedidoCompra[]
 
   @@unique([empresaId, numero])
+  @@index([empresaId, status, criadoEm])
   @@map("crm_cotacao_compra")
 }
 
@@ -1065,6 +1156,8 @@ model PedidoCompra {
   totalGeral      Float              @default(0)
   observacoes     String?
   geradoPorUserId Int
+  aprovadoPorUserId Int?
+  aprovadoEm        DateTime?
   enviadoEm       DateTime?
   criadoEm        DateTime           @default(now())
   atualizadoEm    DateTime           @updatedAt
@@ -1078,6 +1171,7 @@ model PedidoCompra {
   @@unique([empresaId, numero])
   @@index([fornecedorId])
   @@index([planejamentoId])
+  @@index([empresaId, status, criadoEm])
   @@map("crm_pedidos_compra")
 }
 
@@ -1089,6 +1183,7 @@ model ItemPedidoCompra {
   escolhaId      Int?
   descricao      String
   quantidade     Float
+  qtdRecebida    Float   @default(0)
   unidade        String  @default("UN")
   precoUnitario  Float
   total          Float
@@ -1117,4 +1212,429 @@ model CompraAuditoria {
   @@index([empresaId, entidade, entidadeId])
   @@index([criadoEm])
   @@map("crm_compra_auditoria")
+}
+
+// ─────────────────────────────────────────────
+// CRÉDITO / COBRANÇA (borderô)
+// ─────────────────────────────────────────────
+
+model Devedor {
+  id            Int      @id @default(autoincrement())
+  empresaId     Int
+  codigoExterno String // código do cliente no ERP de origem (borderô)
+  nome          String
+  cidade        String?
+  telefone      String? // preenchido pela equipe para disparo de WhatsApp
+  clienteId     Int? // vínculo opcional com Cliente cadastrado
+  criadoEm      DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  empresa Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  titulos CobrancaTitulo[]
+
+  @@unique([empresaId, codigoExterno])
+  @@index([empresaId])
+  @@map("crm_devedores")
+}
+
+model CobrancaTitulo {
+  id         Int       @id @default(autoincrement())
+  empresaId  Int
+  devedorId  Int
+  tipo       String?
+  numero     String?
+  portador   String?
+  emissao    DateTime?
+  vencimento DateTime?
+  valor      Float     @default(0)
+  saldo      Float     @default(0)
+  jurosMulta String?
+  total      Float     @default(0)
+  prazo      Int?
+  criadoEm   DateTime  @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  devedor Devedor @relation(fields: [devedorId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([devedorId])
+  @@index([empresaId, vencimento])
+  @@map("crm_cobranca_titulos")
+}
+
+// ─────────────────────────────────────────────
+// LICITAÇÕES / CONTRATOS / ATAS  (seção 6)
+// ─────────────────────────────────────────────
+
+enum ModalidadeLicitacao {
+  PREGAO_ELETRONICO
+  PREGAO_PRESENCIAL
+  CONCORRENCIA_ELETRONICA
+  CONCORRENCIA_PRESENCIAL
+  DIALOGO_COMPETITIVO
+  CONCURSO
+  LEILAO
+  DISPENSA
+  INEXIGIBILIDADE
+  CREDENCIAMENTO
+  PRE_QUALIFICACAO
+  ADESAO_ATA // adesão (carona) a ata de registro de preços
+  OUTRA
+
+  @@map("crm_modalidade_licitacao")
+}
+
+// Estágio do acompanhamento de uma licitação até virar contrato/ata.
+enum StatusLicitacao {
+  ACOMPANHANDO // no radar, ainda decidindo
+  EM_ANALISE // estudando o edital
+  VAI_PARTICIPAR // decidiu disputar
+  EM_DISPUTA // sessão/lances acontecendo
+  GANHA // arrematada (aguardando homologação)
+  HOMOLOGADA // homologada/adjudicada
+  CONTRATADA // virou contrato/ata vigente
+  PERDIDA
+  FRACASSADA
+  DESERTA
+  SUSPENSA
+  CANCELADA
+
+  @@map("crm_status_licitacao")
+}
+
+enum StatusEmpenho {
+  PENDENTE // empenho recebido, a faturar
+  FATURADO // NF emitida
+  ENTREGUE // mercadoria entregue
+  PAGO
+  CANCELADO
+
+  @@map("crm_status_empenho")
+}
+
+// Licitação/contrato/ata. Carrega tanto o acompanhamento do pregão (cronograma)
+// quanto os dados do contrato/ata resultante (números, vigência, valor global).
+model Licitacao {
+  id        Int @id @default(autoincrement())
+  empresaId Int
+
+  // Identificação do processo / contrato
+  numeroProcesso String?
+  numeroEdital   String?
+  numeroAta      String? // ata de registro de preços
+  numeroContrato String?
+  modalidade     ModalidadeLicitacao @default(PREGAO_ELETRONICO)
+  objeto         String
+
+  // Órgão / cliente vinculado
+  orgaoNome   String
+  orgaoCnpj   String?
+  orgaoUf     String? // estado (UF)
+  orgaoCidade String?
+  clienteId   Int? // vínculo opcional com Cliente cadastrado
+
+  // Portal / cronograma do pregão
+  portal         String? // ComprasNet, BLL, BNC, PNCP, Licitanet...
+  linkEdital     String?
+  dataPublicacao DateTime?
+  dataAbertura   DateTime? // sessão/disputa — alimenta a agenda/cronograma
+
+  // Vigência do contrato/ata
+  vigenciaInicio DateTime?
+  vigenciaFim    DateTime?
+
+  // Valores
+  valorEstimado   Float @default(0) // valor global estimado
+  valorHomologado Float @default(0) // valor efetivamente ganho
+
+  status      StatusLicitacao @default(ACOMPANHANDO)
+  observacoes String?
+
+  // Documentos do edital (PNCP): [{ titulo, tipo, url, data }]
+  arquivos    Json?
+
+  // Integração (PNCP / ConLicitação / etc.) — para dedupe na importação
+  fonteExterna      String?
+  idExterno         String?
+  responsavelUserId Int?
+  criadoPorUserId   Int
+  criadoEm          DateTime @default(now())
+  atualizadoEm      DateTime @updatedAt
+
+  empresa  Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente  Cliente?        @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  itens    LicitacaoItem[]
+  empenhos Empenho[]
+
+  @@index([empresaId, status])
+  @@index([empresaId, dataAbertura])
+  @@index([empresaId, vigenciaFim])
+  @@index([empresaId, criadoEm])
+  @@index([clienteId])
+  @@index([empresaId, fonteExterna, idExterno])
+  @@map("crm_licitacoes")
+}
+
+// Item da licitação/ata (medicamento etc.). A quantidade é a base do saldo;
+// os empenhos consomem essa quantidade.
+model LicitacaoItem {
+  id          Int     @id @default(autoincrement())
+  licitacaoId Int
+  produtoId   Int? // vínculo opcional com o catálogo
+  numeroItem  String? // nº do item/lote no edital
+  descricao   String
+  marca       String?
+  unidade     String  @default("UN")
+  quantidade  Float   @default(0) // qtd registrada/contratada (base do saldo)
+  precoUnitario   Float @default(0) // nosso preço (homologado/registrado)
+  precoReferencia Float @default(0) // preço de referência do edital
+  observacao  String?
+
+  licitacao    Licitacao     @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  produto      Produto?      @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+  empenhoItens EmpenhoItem[]
+
+  @@index([licitacaoId])
+  @@index([produtoId])
+  @@map("crm_licitacao_itens")
+}
+
+// Empenho / nota de empenho / ordem de fornecimento — o "faturamento" que
+// consome o saldo do contrato/ata. É a ponte entre Licitações e Faturamento.
+model Empenho {
+  id          Int @id @default(autoincrement())
+  empresaId   Int
+  licitacaoId Int
+
+  numero           String // nº da nota de empenho / ordem de fornecimento
+  numeroNotaFiscal String?
+  status           StatusEmpenho @default(PENDENTE)
+  dataEmpenho      DateTime?
+  prazoEntrega     DateTime?
+  dataEntrega      DateTime?
+  valorTotal       Float         @default(0)
+  observacoes      String?
+  criadoPorUserId  Int
+  criadoEm         DateTime      @default(now())
+  atualizadoEm     DateTime      @updatedAt
+
+  empresa   Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  licitacao Licitacao     @relation(fields: [licitacaoId], references: [id], onDelete: Cascade)
+  itens     EmpenhoItem[]
+
+  @@index([empresaId, status])
+  @@index([empresaId, criadoEm])
+  @@index([licitacaoId])
+  @@map("crm_empenhos")
+}
+
+model EmpenhoItem {
+  id              Int   @id @default(autoincrement())
+  empenhoId       Int
+  licitacaoItemId Int
+  quantidade      Float @default(0)
+  precoUnitario   Float @default(0)
+  total           Float @default(0)
+
+  empenho       Empenho       @relation(fields: [empenhoId], references: [id], onDelete: Cascade)
+  licitacaoItem LicitacaoItem @relation(fields: [licitacaoItemId], references: [id], onDelete: Cascade)
+
+  @@index([empenhoId])
+  @@index([licitacaoItemId])
+  @@map("crm_empenho_itens")
+}
+
+// Tabela CMED/ANVISA (referência NACIONAL, não isolada por empresa) — preço-teto
+// de venda ao governo (PMVG) por medicamento. Alimentada por upload da planilha
+// oficial da ANVISA. Usada para preço de referência e consulta por EAN.
+model Cmed {
+  id                Int      @id @default(autoincrement())
+  substancia        String?
+  laboratorio       String?
+  produto           String
+  apresentacao      String?
+  registro          String?
+  ggrem             String?
+  ean               String?
+  classeTerapeutica String?
+  tarja             String?
+  precoFabrica      Float    @default(0) // PF sem impostos
+  pmvg              Float    @default(0) // PMVG sem impostos (teto p/ governo)
+  precos            Json? // todas as faixas de ICMS (PF/PMVG por alíquota)
+  competencia       String? // mês/ano da lista importada
+  atualizadoEm      DateTime @default(now())
+
+  @@index([ean])
+  @@index([produto])
+  @@index([substancia])
+  @@map("crm_cmed")
+}
+
+// Controle de cota diária de consultas a APIs externas com limite (ex.: Cosmos).
+// 1 linha por (fonte, dia) — desprezível em volume.
+model ConsultaApiUsage {
+  id    Int    @id @default(autoincrement())
+  fonte String // "cosmos"
+  dia   String // "AAAA-MM-DD"
+  count Int    @default(0)
+
+  @@unique([fonte, dia])
+  @@map("crm_consulta_api_usage")
+}
+
+// ─────────────────────────────────────────────
+// PROMOÇÕES (seção 7)
+// ─────────────────────────────────────────────
+
+enum StatusPromocao {
+  RASCUNHO
+  ATIVA
+  ENCERRADA
+
+  @@map("crm_status_promocao")
+}
+
+model Promocao {
+  id               Int            @id @default(autoincrement())
+  empresaId        Int
+  titulo           String
+  descricao        String?
+  inicio           DateTime?
+  fim              DateTime?
+  status           StatusPromocao @default(RASCUNHO)
+  mensagemTemplate String? // template do WhatsApp (com placeholders)
+  criadoPorUserId  Int
+  criadoEm         DateTime       @default(now())
+  atualizadoEm     DateTime       @updatedAt
+
+  empresa Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  itens   PromocaoItem[]
+
+  @@index([empresaId, status, criadoEm])
+  @@map("crm_promocoes")
+}
+
+model PromocaoItem {
+  id          Int     @id @default(autoincrement())
+  promocaoId  Int
+  produtoId   Int?
+  descricao   String
+  precoNormal Float   @default(0)
+  precoPromo  Float   @default(0)
+  ordem       Int     @default(0)
+
+  promocao Promocao @relation(fields: [promocaoId], references: [id], onDelete: Cascade)
+  produto  Produto? @relation(fields: [produtoId], references: [id], onDelete: SetNull)
+
+  @@index([promocaoId])
+  @@map("crm_promocao_itens")
+}
+
+// ─────────────────────────────────────────────
+// CHAMADOS / SUPORTE
+// ─────────────────────────────────────────────
+
+enum ChamadoStatus {
+  ABERTO
+  EM_ANDAMENTO
+  AGUARDANDO
+  RESOLVIDO
+  FECHADO
+  CANCELADO
+
+  @@map("crm_chamado_status")
+}
+
+enum ChamadoPrioridade {
+  BAIXA
+  MEDIA
+  ALTA
+  URGENTE
+
+  @@map("crm_chamado_prioridade")
+}
+
+// Para onde o chamado vai: interno (equipe da empresa) ou desenvolvedores da
+// plataforma (despacho via endpoint externo — a configurar depois).
+enum ChamadoDestino {
+  INTERNO
+  DESENVOLVEDOR
+
+  @@map("crm_chamado_destino")
+}
+
+model Departamento {
+  id        Int      @id @default(autoincrement())
+  empresaId Int
+  nome      String
+  descricao String?
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa  Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuarios DepartamentoUsuario[]
+  chamados Chamado[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@map("crm_departamentos")
+}
+
+// Vínculo N:N usuário ↔ departamento.
+model DepartamentoUsuario {
+  departamentoId Int
+  userId         Int
+  criadoEm       DateTime @default(now())
+
+  departamento Departamento @relation(fields: [departamentoId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([departamentoId, userId])
+  @@index([userId])
+  @@map("crm_departamento_usuarios")
+}
+
+model Chamado {
+  id                Int               @id @default(autoincrement())
+  empresaId         Int
+  numero            String
+  titulo            String
+  descricao         String
+  departamentoId    Int?
+  solicitanteUserId Int
+  responsavelUserId Int?
+  prioridade        ChamadoPrioridade @default(MEDIA)
+  status            ChamadoStatus     @default(ABERTO)
+  destino           ChamadoDestino    @default(INTERNO)
+  categoria         String?
+  enviadoExternoEm  DateTime? // quando despachado aos devs da plataforma
+  refExterna        String? // id/protocolo retornado pelo endpoint externo
+  resolvidoEm       DateTime?
+  criadoEm          DateTime          @default(now())
+  atualizadoEm      DateTime          @updatedAt
+
+  empresa      Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  departamento Departamento?     @relation(fields: [departamentoId], references: [id], onDelete: SetNull)
+  mensagens    ChamadoMensagem[]
+
+  @@unique([empresaId, numero])
+  @@index([empresaId, status, criadoEm])
+  @@index([departamentoId])
+  @@index([responsavelUserId])
+  @@map("crm_chamados")
+}
+
+model ChamadoMensagem {
+  id        Int      @id @default(autoincrement())
+  chamadoId Int
+  userId    Int?
+  mensagem  String
+  interno   Boolean  @default(false) // nota interna (não visível ao solicitante)
+  criadoEm  DateTime @default(now())
+
+  chamado Chamado @relation(fields: [chamadoId], references: [id], onDelete: Cascade)
+
+  @@index([chamadoId, criadoEm])
+  @@map("crm_chamado_mensagens")
 }

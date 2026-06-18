@@ -11,11 +11,17 @@ export function useComprasListFiltros() {
   const [status, setStatus] = useState("")
   const [fornecedorId, setFornecedorId] = useState("")
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400)
     return () => clearTimeout(t)
   }, [search])
+
+  // Qualquer mudança de filtro volta para a primeira página.
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, status, fornecedorId, dateRange])
 
   const filtros: ComprasListFiltros = useMemo(
     () => ({
@@ -24,8 +30,9 @@ export function useComprasListFiltros() {
       fornecedorId: fornecedorId ? parseInt(fornecedorId, 10) : undefined,
       dataInicio: dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : undefined,
       dataFim: dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : undefined,
+      page,
     }),
-    [debouncedSearch, status, fornecedorId, dateRange]
+    [debouncedSearch, status, fornecedorId, dateRange, page]
   )
 
   const hasActiveFilters = !!(
@@ -42,6 +49,7 @@ export function useComprasListFiltros() {
     setStatus("")
     setFornecedorId("")
     setDateRange(undefined)
+    setPage(1)
   }
 
   return {
@@ -53,6 +61,8 @@ export function useComprasListFiltros() {
     setFornecedorId,
     dateRange,
     setDateRange,
+    page,
+    setPage,
     filtros,
     hasActiveFilters,
     clearFilters,

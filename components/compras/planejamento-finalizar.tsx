@@ -125,26 +125,30 @@ export function PlanejamentoFinalizar({
     fornecedorNome: string,
     token?: string
   ) {
-    let linkToken = token
-    if (!linkToken) {
-      const cached = linksCache.get(cotacaoFornecedorId)
-      if (cached) {
-        linkToken = cached
-      } else if (onGerarLink) {
-        const res = await onGerarLink(cotacaoFornecedorId)
-        linkToken = res.token
-        setLinksCache((prev) => new Map(prev).set(cotacaoFornecedorId, linkToken!))
+    try {
+      let linkToken = token
+      if (!linkToken) {
+        const cached = linksCache.get(cotacaoFornecedorId)
+        if (cached) {
+          linkToken = cached
+        } else if (onGerarLink) {
+          const res = await onGerarLink(cotacaoFornecedorId)
+          linkToken = res.token
+          setLinksCache((prev) => new Map(prev).set(cotacaoFornecedorId, linkToken!))
+        }
       }
+      if (!linkToken) {
+        toast.error("Não foi possível gerar o link.")
+        return
+      }
+      const url = `${window.location.origin}/portal/cotacao/${linkToken}`
+      await navigator.clipboard.writeText(url)
+      setCopiado(cotacaoFornecedorId)
+      toast.success(`Link de ${fornecedorNome} copiado.`)
+      setTimeout(() => setCopiado(null), 2000)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao gerar link.")
     }
-    if (!linkToken) {
-      toast.error("Não foi possível gerar o link.")
-      return
-    }
-    const url = `${window.location.origin}/portal/cotacao/${linkToken}`
-    await navigator.clipboard.writeText(url)
-    setCopiado(cotacaoFornecedorId)
-    toast.success(`Link de ${fornecedorNome} copiado.`)
-    setTimeout(() => setCopiado(null), 2000)
   }
 
   async function handleAbrirCotacao() {

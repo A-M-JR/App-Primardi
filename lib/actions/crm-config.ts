@@ -3,9 +3,10 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import crypto from "crypto"
+import { getRequesterContext } from "./users"
 
 export async function getCRMConfig() {
-  const empresaId = 1; // Assuming single tenant fallback
+  const { empresaId } = await getRequesterContext();
 
   const empresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
@@ -30,7 +31,7 @@ export async function getCRMConfig() {
 }
 
 export async function generateNewApiToken() {
-  const empresaId = 1;
+  const { empresaId } = await getRequesterContext();
   const newToken = crypto.randomBytes(32).toString('hex');
   
   await prisma.empresa.update({
@@ -43,7 +44,7 @@ export async function generateNewApiToken() {
 }
 
 export async function saveFunnelStatus(statusList: any[]) {
-  const empresaId = 1;
+  const { empresaId } = await getRequesterContext();
 
   await prisma.$transaction(async (tx) => {
     const incomingIds = statusList.map(s => s.id).filter(id => typeof id === 'number');
@@ -116,7 +117,7 @@ export async function saveFunnelStatus(statusList: any[]) {
 }
 
 export async function saveOrigins(originsList: any[]) {
-  const empresaId = 1;
+  const { empresaId } = await getRequesterContext();
 
   await prisma.$transaction(async (tx) => {
     const incomingIds = originsList.map(o => o.id).filter(id => typeof id === 'number');

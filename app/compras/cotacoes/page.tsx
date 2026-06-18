@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table"
 import { ComprasPageHeader } from "@/components/compras/compras-page-header"
 import { ComprasListFiltros } from "@/components/compras/compras-list-filtros"
+import { ComprasPagination } from "@/components/compras/compras-pagination"
 import { STATUS_COTACAO_OPTS, labelStatus } from "@/lib/compras/list-filters"
 
 export default function CotacoesPage() {
@@ -34,6 +35,7 @@ export default function CotacoesPage() {
     setFornecedorId,
     dateRange,
     setDateRange,
+    setPage,
     filtros,
     hasActiveFilters,
     clearFilters,
@@ -87,7 +89,7 @@ export default function CotacoesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {cotacoes?.map((c) => (
+                  {cotacoes?.data?.map((c) => (
                     <TableRow key={c.id} className="hover:bg-muted/30">
                       <TableCell>
                         <div>
@@ -99,7 +101,7 @@ export default function CotacoesPage() {
                         {c._count.itens}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell tabular-nums">
-                        {c.fornecedores.length}
+                        {c._count.fornecedores}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
                         {new Date(c.criadoEm).toLocaleDateString("pt-BR")}
@@ -118,7 +120,7 @@ export default function CotacoesPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!cotacoes?.length && (
+                  {!cotacoes?.data?.length && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
                         Nenhuma cotação encontrada.
@@ -128,6 +130,12 @@ export default function CotacoesPage() {
                 </TableBody>
               </Table>
             </div>
+            <ComprasPagination
+              page={cotacoes?.page ?? 1}
+              totalPages={cotacoes?.totalPages ?? 1}
+              total={cotacoes?.total ?? 0}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
       </div>

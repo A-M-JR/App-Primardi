@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_noStore as noStore } from "next/cache"
 import type { Prisma } from "@prisma/client"
+import { getRequesterContext } from "./users"
 
 const PRODUTOS_PAGE_SIZE = 20
 
@@ -51,7 +52,7 @@ export async function getProdutosPaginated(params: {
   noStore()
   const page = Math.max(1, params.page || 1)
   const limit = params.limit || PRODUTOS_PAGE_SIZE
-  const empresaId = params.empresaId || 1
+  const empresaId = params.empresaId ?? (await getRequesterContext()).empresaId
   const search = params.search?.trim() || ""
 
   const where: Prisma.ProdutoWhereInput = {
@@ -143,8 +144,9 @@ export async function getNextProdutoCode() {
   return (lastCode + 1).toString()
 }
 
-export async function saveProduto(data: any, empresaId = 1) {
+export async function saveProduto(data: any) {
   try {
+    const { empresaId } = await getRequesterContext()
     const { id, clientes, ...rest } = data
     
     const prismaData = {
@@ -158,6 +160,7 @@ export async function saveProduto(data: any, empresaId = 1) {
       ativo: rest.ativo !== undefined ? rest.ativo : true,
       categoriaId: rest.categoriaId ? Number(rest.categoriaId) : null,
       fornecedorId: rest.fornecedorId ? Number(rest.fornecedorId) : null,
+      ...(rest.pmvg !== undefined ? { pmvg: rest.pmvg === null ? null : Number(rest.pmvg) } : {}),
     }
 
     if (!id) {

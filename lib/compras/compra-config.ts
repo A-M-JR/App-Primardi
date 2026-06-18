@@ -10,7 +10,7 @@ export async function getCompraConfig(requesterId?: number) {
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   let config = await prisma.compraConfigEmpresa.findUnique({
     where: { empresaId: ctx.empresaId },
@@ -33,7 +33,7 @@ export async function saveCompraConfig(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canApproveCompras(ctx.role)) throw new Error("Sem permissão.")
 

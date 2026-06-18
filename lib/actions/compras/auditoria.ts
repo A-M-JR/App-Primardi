@@ -8,7 +8,7 @@ import { unstable_noStore as noStore } from "next/cache"
 async function ctxFrom(requesterId?: number) {
   return requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 }
 
 export async function listarAuditoriaImportacao(importacaoId: number, requesterId?: number) {

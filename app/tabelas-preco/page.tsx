@@ -23,7 +23,7 @@ export default function TabelasPrecoPage() {
 
   const { data: tabelasList, isLoading: loading, refetch: revalidate } = useDataQuery<any[]>({
     key: 'tabelas-preco',
-    fetcher: () => getTabelasPreco(1)
+    fetcher: () => getTabelasPreco()
   })
 
   const filtered = useMemo(() => {

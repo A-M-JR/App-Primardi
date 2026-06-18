@@ -33,6 +33,7 @@ export default function EstoquePage() {
   const [historicoOpen, setHistoricoOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [selectedProduto, setSelectedProduto] = useState<any | null>(null)
+  const [situacao, setSituacao] = useState<"" | "ruptura" | "baixo" | "ok">("")
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -42,9 +43,13 @@ export default function EstoquePage() {
     return () => clearTimeout(handler)
   }, [search])
 
+  useEffect(() => {
+    setPage(1)
+  }, [situacao])
+
   const apiParams = useMemo(
-    () => ({ page, limit: PAGE_SIZE, search: debouncedSearch }),
-    [page, debouncedSearch]
+    () => ({ page, limit: PAGE_SIZE, search: debouncedSearch, situacao }),
+    [page, debouncedSearch, situacao]
   )
 
   const { data: dbData, isLoading: loading, refetch: revalidate } = useDataQuery({
@@ -54,12 +59,14 @@ export default function EstoquePage() {
         page,
         limit: PAGE_SIZE,
         search: debouncedSearch,
+        situacao: situacao || undefined,
       }),
   })
 
   const produtosList = dbData?.data || []
   const total = dbData?.total || 0
   const totalPages = dbData?.totalPages || 1
+  const kpis = dbData?.kpis || { ruptura: 0, baixo: 0, total: 0, valor: 0 }
 
   const handleMovimentar = (produto: any) => {
     setSelectedProduto(produto)
@@ -82,6 +89,49 @@ export default function EstoquePage() {
           <p className="text-sm text-muted-foreground mt-1">
             Gestão de inventário, entradas, saídas e movimentações de produtos.
           </p>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="rounded-lg bg-muted/40 p-4">
+            <p className="text-[13px] text-muted-foreground">Itens ativos</p>
+            <p className="text-2xl font-semibold mt-1">{kpis.total}</p>
+          </div>
+          <div className="rounded-lg bg-rose-500/5 p-4">
+            <p className="text-[13px] text-rose-600">Em ruptura</p>
+            <p className="text-2xl font-semibold mt-1 text-rose-600">{kpis.ruptura}</p>
+          </div>
+          <div className="rounded-lg bg-amber-500/5 p-4">
+            <p className="text-[13px] text-amber-600">Estoque baixo</p>
+            <p className="text-2xl font-semibold mt-1 text-amber-600">{kpis.baixo}</p>
+          </div>
+          <div className="rounded-lg bg-muted/40 p-4">
+            <p className="text-[13px] text-muted-foreground">Valor em estoque</p>
+            <p className="text-2xl font-semibold mt-1">
+              {kpis.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+            </p>
+          </div>
+        </div>
+
+        {/* Filtro por situação */}
+        <div className="flex flex-wrap gap-1.5">
+          {([
+            { v: "", label: "Todos", n: kpis.total },
+            { v: "ruptura", label: "Ruptura", n: kpis.ruptura, cor: "bg-rose-500" },
+            { v: "baixo", label: "Baixo", n: kpis.baixo, cor: "bg-amber-500" },
+            { v: "ok", label: "OK", n: Math.max(0, kpis.total - kpis.ruptura - kpis.baixo), cor: "bg-emerald-500" },
+          ] as const).map((c) => (
+            <button
+              key={c.v}
+              onClick={() => setSituacao(c.v as any)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                situacao === c.v ? "border-primary bg-primary/10 text-primary font-medium" : "border-border hover:bg-muted text-muted-foreground"
+              }`}
+            >
+              {"cor" in c && c.cor && <span className={`size-1.5 rounded-full ${c.cor}`} />}
+              {c.label} <span className="tabular-nums">{c.n}</span>
+            </button>
+          ))}
         </div>
 
         <Card className="shadow-sm border-border/50">
@@ -150,11 +200,16 @@ export default function EstoquePage() {
                       </td>
                       <td className="px-6 py-4 text-right font-mono font-bold text-base">
                         {produto.estoque} <span className="text-xs font-normal text-muted-foreground ml-1">{produto.unidadePadrao}</span>
+                        {produto.diasCobertura != null && (
+                          <span className="block text-[10px] font-normal text-muted-foreground">
+                            ~{produto.diasCobertura}d de cobertura
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {produto.estoque <= 0 ? (
-                           <Badge variant="destructive" className="bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border-rose-500/20">Sem Estoque</Badge>
-                        ) : produto.estoque < 10 ? (
+                        {produto.situacao === "ruptura" ? (
+                           <Badge variant="destructive" className="bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border-rose-500/20">Ruptura</Badge>
+                        ) : produto.situacao === "baixo" ? (
                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border-amber-500/20">Estoque Baixo</Badge>
                         ) : (
                            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border-emerald-500/20">Disponível</Badge>

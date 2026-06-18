@@ -11,8 +11,25 @@ import { calcularMediaConsumo, getCompraConfig } from "@/lib/compras/compra-conf
 import { parseLinhasImportacao, parsePrecosFornecedor } from "@/lib/compras/json-store"
 import { nextPedidoCompraNumero } from "./pedido-compra-helpers"
 import type { ComprasListFiltros } from "@/lib/compras/list-filters"
-import { buildCriadoEmFilter } from "@/lib/compras/list-filters"
-import type { StatusPlanejamentoCompra } from "@prisma/client"
+import { buildCriadoEmFilter, buildPaginacao } from "@/lib/compras/list-filters"
+import { Prisma, type StatusPlanejamentoCompra } from "@prisma/client"
+
+/** Última compra (preço + data) por produto, considerando pedidos efetivados. */
+async function getUltimaCompraPorProduto(produtoIds: number[], empresaId: number) {
+  const map = new Map<number, { preco: number; data: Date }>()
+  if (produtoIds.length === 0) return map
+  const rows = await prisma.$queryRaw<{ produtoId: number; precoUnitario: number; criadoEm: Date }[]>`
+    SELECT DISTINCT ON (ip."produtoId") ip."produtoId", ip."precoUnitario", pc."criadoEm"
+    FROM "crm_itens_pedido_compra" ip
+    JOIN "crm_pedidos_compra" pc ON pc.id = ip."pedidoCompraId"
+    WHERE ip."produtoId" IN (${Prisma.join(produtoIds)})
+      AND pc."empresaId" = ${empresaId}
+      AND pc."status" IN ('ENVIADO', 'CONFIRMADO', 'RECEBIDO_PARCIAL', 'RECEBIDO')
+    ORDER BY ip."produtoId", pc."criadoEm" DESC
+  `
+  for (const r of rows) map.set(r.produtoId, { preco: r.precoUnitario, data: r.criadoEm })
+  return map
+}
 
 async function nextPlanejamentoNumero(empresaId: number) {
   const ano = new Date().getFullYear()
@@ -29,33 +46,43 @@ export async function getPlanejamentos(filtros?: ComprasListFiltros, requesterId
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const criadoEm = buildCriadoEmFilter(filtros?.dataInicio, filtros?.dataFim)
   const search = filtros?.search?.trim()
+  const { skip, take, page } = buildPaginacao(filtros?.page)
 
-  return prisma.planejamentoCompra.findMany({
-    where: {
-      empresaId: ctx.empresaId,
-      ...(filtros?.status ? { status: filtros.status as StatusPlanejamentoCompra } : {}),
-      ...(criadoEm ? { criadoEm } : {}),
-      ...(search
-        ? {
-            OR: [
-              { numero: { contains: search, mode: "insensitive" } },
-              { titulo: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      _count: { select: { itens: true } },
-    },
-    orderBy: { criadoEm: "desc" },
-    take: 50,
-  }).then((list) =>
-    list.map((p) => ({ ...p, _count: { ...p._count, importacoes: p.importacaoIds.length } }))
-  )
+  const where = {
+    empresaId: ctx.empresaId,
+    ...(filtros?.status ? { status: filtros.status as StatusPlanejamentoCompra } : {}),
+    ...(criadoEm ? { criadoEm } : {}),
+    ...(search
+      ? {
+          OR: [
+            { numero: { contains: search, mode: "insensitive" as const } },
+            { titulo: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  }
+
+  const [list, total] = await Promise.all([
+    prisma.planejamentoCompra.findMany({
+      where,
+      include: { _count: { select: { itens: true } } },
+      orderBy: { criadoEm: "desc" },
+      skip,
+      take,
+    }),
+    prisma.planejamentoCompra.count({ where }),
+  ])
+
+  return {
+    data: list.map((p) => ({ ...p, _count: { ...p._count, importacoes: p.importacaoIds.length } })),
+    total,
+    page,
+    totalPages: Math.ceil(total / take),
+  }
 }
 
 export async function criarPlanejamento(
@@ -64,7 +91,7 @@ export async function criarPlanejamento(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -88,7 +115,7 @@ export async function getPlanejamentoById(id: number, requesterId?: number) {
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const planejamento = await prisma.planejamentoCompra.findFirst({
     where: { id, empresaId: ctx.empresaId },
@@ -181,7 +208,7 @@ export async function getPlanejamentoItens(
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const plan = await prisma.planejamentoCompra.findFirst({
     where: { id: planejamentoId, empresaId: ctx.empresaId },
@@ -223,10 +250,16 @@ export async function getPlanejamentoItens(
     prisma.planejamentoCompraItem.count({ where }),
   ])
 
+  const produtoIds = itens.map((i) => i.produtoId).filter((x): x is number => x != null)
+  const ultimaCompra = await getUltimaCompraPorProduto(produtoIds, ctx.empresaId)
+
   return {
     itens: itens.map((item) => ({
       ...item,
       precos: (item.precosJson as PrecoFornecedorMatriz[] | null) ?? [],
+      ultimaCompra: item.produtoId
+        ? ultimaCompra.get(item.produtoId) ?? null
+        : null,
     })),
     total,
     page,
@@ -249,7 +282,7 @@ async function assertPlanejamentoEditavel(planejamentoId: number, empresaId: num
 export async function finalizarPlanejamento(planejamentoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
   await assertPlanejamentoEditavel(planejamentoId, ctx.empresaId)
@@ -271,7 +304,7 @@ export async function atualizarPlanejamento(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
   await assertPlanejamentoEditavel(planejamentoId, ctx.empresaId)
@@ -292,7 +325,7 @@ export async function vincularImportacao(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
   await assertPlanejamentoEditavel(planejamentoId, ctx.empresaId)
@@ -337,7 +370,7 @@ export async function desvincularImportacao(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
   await assertPlanejamentoEditavel(planejamentoId, ctx.empresaId)
@@ -362,7 +395,7 @@ export async function desvincularImportacao(
 export async function sincronizarMatriz(planejamentoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const planejamento = await prisma.planejamentoCompra.findFirst({
     where: { id: planejamentoId, empresaId: ctx.empresaId },
@@ -535,7 +568,7 @@ export async function sincronizarMatriz(planejamentoId: number, requesterId?: nu
 export async function calcularNecessidade(planejamentoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 
@@ -584,7 +617,7 @@ export async function ajustarPlanejamentoItem(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const item = await prisma.planejamentoCompraItem.findFirst({
     where: { id: itemId },
@@ -620,7 +653,7 @@ export async function ajustarPlanejamentoItem(
 export async function gerarPedidosFromPlanejamento(planejamentoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
   await assertPlanejamentoEditavel(planejamentoId, ctx.empresaId)
@@ -707,7 +740,7 @@ export async function getImportacoesDisponiveis(planejamentoId: number, requeste
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const planejamento = await prisma.planejamentoCompra.findFirst({
     where: { id: planejamentoId, empresaId: ctx.empresaId },

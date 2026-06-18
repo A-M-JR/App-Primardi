@@ -58,7 +58,7 @@ async function matchLinha(
 export async function executarMatchImportacao(importacaoId: number, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const imp = await prisma.fornecedorImportacao.findFirst({
     where: { id: importacaoId, empresaId: ctx.empresaId },
@@ -125,7 +125,7 @@ export async function vincularProdutoManual(
 ) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 

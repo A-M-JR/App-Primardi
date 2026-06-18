@@ -37,7 +37,7 @@ export async function getFornecedorImportConfig(fornecedorId: number, requesterI
   noStore()
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   const fornecedor = await prisma.fornecedor.findFirst({
     where: { id: fornecedorId, empresaId: ctx.empresaId },
@@ -59,7 +59,7 @@ export async function getFornecedorImportConfig(fornecedorId: number, requesterI
 export async function saveFornecedorImportConfig(data: SaveImportConfigInput, requesterId?: number) {
   const ctx = requesterId
     ? await getRequesterContext(requesterId)
-    : { empresaId: 1, userId: 1, role: "ADMIN" as const }
+    : await getRequesterContext()
 
   if (!canManageCompras(ctx.role)) throw new Error("Sem permissão.")
 

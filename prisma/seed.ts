@@ -1,5 +1,7 @@
-import { UserRole } from '@prisma/client'
+import { UserRole, NivelAcesso } from '@prisma/client'
 import { prisma } from '../lib/prisma'
+
+const MODULOS_PADRAO = ['comercial', 'crm', 'compras', 'estoque', 'cobranca', 'licitacoes', 'faturamento', 'promocoes', 'chamados']
 
 async function main() {
   console.log('Iniciando seed do banco de dados (White Label SaaS)...')
@@ -7,8 +9,9 @@ async function main() {
   // 1. Criar Empresa Padrão (Tenant)
   const empresa = await prisma.empresa.upsert({
     where: { cnpj: '00000000000000' },
-    update: {},
+    update: { modulosAtivos: MODULOS_PADRAO },
     create: {
+      modulosAtivos: MODULOS_PADRAO,
       razaoSocial: 'Primardi Tecnologias (Padrão)',
       nomeFantasia: 'Primardi',
       cnpj: '00000000000000',
@@ -46,35 +49,53 @@ async function main() {
   // (Nota: em produção, a senha deve estar hashada. A função saveUser nas actions faz isso)
   const adminHash = await import('bcryptjs').then(mod => (mod.default || mod).hashSync('admin', 10))
   const admin = await prisma.user.upsert({
-    where: { empresaId_email: { empresaId: empresa.id, email: 'admin@primardi.com.br' } },
-    update: { role: UserRole.ADMIN, empresaId: empresa.id, senha: adminHash, ativo: true },
+    where: { email: 'admin@primardi.com.br' },
+    update: { nivelAcesso: NivelAcesso.MASTER, senha: adminHash, ativo: true },
     create: {
-      empresaId: empresa.id,
       nome: 'Administrador',
       email: 'admin@primardi.com.br',
       senha: adminHash,
-      role: UserRole.ADMIN,
+      nivelAcesso: NivelAcesso.MASTER,
       ativo: true
     }
   })
   console.log('✅ Admin criado/verificado:', admin.email)
 
+  // Membership do admin (MASTER → GERENTE na empresa)
+  await prisma.userEmpresa.upsert({
+    where: { userId_empresaId: { userId: admin.id, empresaId: empresa.id } },
+    update: {},
+    create: { userId: admin.id, empresaId: empresa.id, role: UserRole.GERENTE, permissoes: {}, ativo: true },
+  })
+
   // 4. Criar Usuário Vendedor
   const vendHash = await import('bcryptjs').then(mod => (mod.default || mod).hashSync('123', 10))
   const userVend = await prisma.user.upsert({
-    where: { empresaId_email: { empresaId: empresa.id, email: 'vendedor@primardi.com.br' } },
-    update: { role: UserRole.VENDEDOR, empresaId: empresa.id, senha: vendHash, ativo: true },
+    where: { email: 'vendedor@primardi.com.br' },
+    update: { senha: vendHash, ativo: true },
     create: {
-      empresaId: empresa.id,
       nome: 'Vendedor Teste',
       email: 'vendedor@primardi.com.br',
       senha: vendHash,
-      role: UserRole.VENDEDOR,
-      vendedorId: vendedor.id,
+      nivelAcesso: NivelAcesso.PADRAO,
       ativo: true
     }
   })
   console.log('✅ Usuário Vendedor criado/verificado:', userVend.email)
+
+  // Membership do vendedor (OPERADOR com vendedorId vinculado)
+  await prisma.userEmpresa.upsert({
+    where: { userId_empresaId: { userId: userVend.id, empresaId: empresa.id } },
+    update: {},
+    create: {
+      userId: userVend.id,
+      empresaId: empresa.id,
+      role: UserRole.OPERADOR,
+      vendedorId: vendedor.id,
+      permissoes: Object.fromEntries(MODULOS_PADRAO.map((m) => [m, ['view', 'edit']])),
+      ativo: true,
+    },
+  })
 
   console.log('🚀 Seed concluído com sucesso!')
 }

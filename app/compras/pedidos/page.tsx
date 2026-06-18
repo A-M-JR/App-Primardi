@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table"
 import { ComprasPageHeader } from "@/components/compras/compras-page-header"
 import { ComprasListFiltros } from "@/components/compras/compras-list-filtros"
+import { ComprasPagination } from "@/components/compras/compras-pagination"
 import { STATUS_PEDIDO_OPTS, labelStatus } from "@/lib/compras/list-filters"
 
 export default function PedidosCompraPage() {
@@ -34,6 +35,7 @@ export default function PedidosCompraPage() {
     setFornecedorId,
     dateRange,
     setDateRange,
+    setPage,
     filtros,
     hasActiveFilters,
     clearFilters,
@@ -88,7 +90,7 @@ export default function PedidosCompraPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pedidos?.map((p) => (
+                  {pedidos?.data?.map((p) => (
                     <TableRow key={p.id} className="hover:bg-muted/30">
                       <TableCell className="font-medium">{p.numero}</TableCell>
                       <TableCell className="hidden md:table-cell text-muted-foreground">
@@ -120,7 +122,7 @@ export default function PedidosCompraPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {!pedidos?.length && (
+                  {!pedidos?.data?.length && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center text-muted-foreground py-12">
                         Nenhum pedido encontrado.
@@ -130,6 +132,12 @@ export default function PedidosCompraPage() {
                 </TableBody>
               </Table>
             </div>
+            <ComprasPagination
+              page={pedidos?.page ?? 1}
+              totalPages={pedidos?.totalPages ?? 1}
+              total={pedidos?.total ?? 0}
+              onPageChange={setPage}
+            />
           </CardContent>
         </Card>
       </div>
