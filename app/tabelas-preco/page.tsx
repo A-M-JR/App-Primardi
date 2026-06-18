@@ -158,7 +158,7 @@ export default function TabelasPrecoPage() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[calc(100%-1rem)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Table2 className="size-5 text-primary" /> Nova Tabela de Preço

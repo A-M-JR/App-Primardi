@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { FileDown, Loader2 } from 'lucide-react'
-import jsPDF from 'jspdf'
+import type jsPDF from 'jspdf'
 import { Orcamento, Cliente, Vendedor } from '@/lib/types'
 import { getEmpresa } from '@/lib/actions/config'
 
@@ -79,7 +79,9 @@ export function PDFDownloadQuotationButton({
     setIsLoading(true)
     try {
       const empresaData = await getEmpresa();
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      // jsPDF carregado sob demanda — fora do bundle inicial da rota.
+      const { default: JsPDF } = await import('jspdf')
+      const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       const pageW = 210
       const pageH = 297
       const margin = 12

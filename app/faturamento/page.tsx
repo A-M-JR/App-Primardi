@@ -132,7 +132,7 @@ export default function FaturamentoPage() {
         )}
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <div className="rounded-lg bg-muted/40 p-4">
             <p className="text-[13px] text-muted-foreground">Contratos ativos</p>
             <p className="text-2xl font-semibold mt-1">{k?.contratos ?? 0}</p>

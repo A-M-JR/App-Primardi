@@ -18,7 +18,13 @@ import {
   ShieldAlert,
   Banknote,
 } from "lucide-react"
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts"
+import dynamic from "next/dynamic"
+
+// Gráfico carregado sob demanda — tira o recharts do bundle inicial da rota.
+const GastoChart = dynamic(() => import("@/components/compras/gasto-chart"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse rounded bg-muted/40" />,
+})
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
@@ -100,7 +106,7 @@ export default function ComprasDashboardPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Kpi
                 icon={<Banknote className="size-4" />}
                 label="Gasto no período"
@@ -134,21 +140,7 @@ export default function ComprasDashboardPage() {
                 <CardContent className="p-5">
                   <p className="text-sm font-medium mb-4">Gasto por mês</p>
                   <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.2} />
-                        <XAxis dataKey="mes" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis
-                          fontSize={11}
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={(v) => `${Math.round(v / 1000)}k`}
-                          width={40}
-                        />
-                        <Tooltip formatter={(v: number) => brl(v)} cursor={{ fill: "rgba(0,0,0,0.04)" }} />
-                        <Bar dataKey="total" fill="#1D9E75" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <GastoChart data={chartData} formatter={brl} />
                   </div>
                 </CardContent>
               </Card>

@@ -24,7 +24,7 @@ export function ProdutoDetailDialog({ produto, open, onOpenChange, onEdit }: Pro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl p-0 border-0 shadow-2xl overflow-hidden bg-background">
+      <DialogContent className="w-[calc(100%-1rem)] sm:max-w-xl p-0 border-0 shadow-2xl overflow-hidden bg-background">
         
         {/* Banner Superior */}
         <div className="relative h-24 bg-gradient-to-r from-primary/90 to-primary p-6 flex flex-col justify-center">

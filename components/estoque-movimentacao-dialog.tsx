@@ -69,7 +69,7 @@ export function EstoqueMovimentacaoDialog({ open, onOpenChange, produto, onSucce
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="w-[calc(100%-1rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="size-5" /> Movimentação de Estoque

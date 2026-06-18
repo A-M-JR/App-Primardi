@@ -85,7 +85,7 @@ export default function ChamadosPage() {
           <Button onClick={() => setFormOpen(true)} className="gap-2"><Plus className="size-4" /> Abrir chamado</Button>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-lg bg-muted/40 p-4"><p className="text-[13px] text-muted-foreground">Total</p><p className="text-2xl font-semibold mt-1">{k?.total ?? 0}</p></div>
           <div className="rounded-lg bg-amber-500/5 p-4"><p className="text-[13px] text-amber-600">Abertos</p><p className="text-2xl font-semibold mt-1 text-amber-600">{k?.abertos ?? 0}</p></div>
           <div className="rounded-lg bg-emerald-500/5 p-4"><p className="text-[13px] text-emerald-600">Resolvidos</p><p className="text-2xl font-semibold mt-1 text-emerald-600">{k?.resolvidos ?? 0}</p></div>

@@ -20,10 +20,16 @@ import { getDashboardMetrics } from "@/lib/actions/dashboard"
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts"
+import dynamic from "next/dynamic"
 import { useDataQuery } from "@/hooks/use-data-query"
 import { DashboardSkeleton } from "@/components/dashboard-skeleton"
 import { Skeleton } from "@/components/ui/skeleton"
+
+// Gráfico (recharts) carregado sob demanda — fora do bundle inicial do dashboard.
+const DashboardChart = dynamic(() => import("@/components/dashboard-chart"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[200px] w-full mx-4" />,
+})
 
 function DashboardContent() {
   const [search, setSearch] = useState("")
@@ -59,30 +65,13 @@ function DashboardContent() {
   const clientesInativosList = dashData?.clientesInativosList || []
   const dynamicChartData = dashData?.chartData || []
 
-  const renderChart = useMemo(() => (
-    <ResponsiveContainer width="100%" height="100%">
-      {dynamicChartData.length === 0 ? (
-        <div className="flex h-full items-center justify-center">
-           <Skeleton className="h-[200px] w-full mx-4" />
-        </div>
-      ) : (
-        <BarChart data={dynamicChartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-          <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-          <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dx={-10} />
-          <Tooltip
-            cursor={{ fill: '#f1f5f9' }}
-            contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#0f172a', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-            itemStyle={{ color: '#0f172a', fontWeight: 500 }}
-            labelStyle={{ color: '#64748b', marginBottom: '8px', fontWeight: 600 }}
-          />
-          <Legend wrapperStyle={{ paddingTop: "10px" }} />
-          <Bar dataKey="orcamentos" name="Orçamentos Gerados" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={40} />
-          <Bar dataKey="conversoes" name="Conversões Fechadas" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-        </BarChart>
-      )}
-    </ResponsiveContainer>
-  ), [dynamicChartData])
+  const renderChart = dynamicChartData.length === 0 ? (
+    <div className="flex h-full items-center justify-center">
+      <Skeleton className="h-[200px] w-full mx-4" />
+    </div>
+  ) : (
+    <DashboardChart data={dynamicChartData} />
+  )
 
   if (loading && !dashData) {
     return <DashboardSkeleton />

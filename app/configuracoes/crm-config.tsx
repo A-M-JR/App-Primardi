@@ -10,8 +10,6 @@ import { getCRMConfig, generateNewApiToken, saveFunnelStatus, saveOrigins } from
 import { toast } from "sonner"
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd"
 
-import Swal from "sweetalert2"
-
 type FunilStatus = { id: number | string, nome: string, cor: string };
 type OrigemLead = { id: number | string, nome: string };
 
@@ -42,6 +40,7 @@ export function CRMConfig() {
   }, []);
 
   const handleGenerateToken = async () => {
+    const Swal = (await import("sweetalert2")).default
     const result = await Swal.fire({
       title: 'Deseja continuar?',
       text: "Gerar um novo token invalidará o antigo e todas as integrações atuais pararão de funcionar.",

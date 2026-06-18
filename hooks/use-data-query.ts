@@ -1,10 +1,51 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 
-// Cache global em memória (não persiste após F5, mas persiste entre trocas de abas)
+// Cache global em memória + espelho em sessionStorage (sobrevive ao F5 e à
+// navegação dentro da sessão da aba). É um cache por-navegador, sem risco
+// multitenant: `clearDataCache()` (chamado em login/logout/troca de empresa)
+// zera memória E sessionStorage.
 const globalCache: Record<string, { data: any; timestamp: number }> = {}
+const STORAGE_PREFIX = "dq:"
+
+// Hidrata o cache em memória a partir do sessionStorage UMA vez, no client,
+// antes de qualquer render — assim páginas revisitadas (e o F5) pintam na hora.
+if (typeof window !== "undefined") {
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i)
+      if (k && k.startsWith(STORAGE_PREFIX)) {
+        const raw = sessionStorage.getItem(k)
+        if (raw) globalCache[k.slice(STORAGE_PREFIX.length)] = JSON.parse(raw)
+      }
+    }
+  } catch {
+    /* sessionStorage indisponível/corrompido — segue só com cache em memória */
+  }
+}
+
+function persist(cacheKey: string, entry: { data: any; timestamp: number }) {
+  if (typeof window === "undefined") return
+  try {
+    sessionStorage.setItem(STORAGE_PREFIX + cacheKey, JSON.stringify(entry))
+  } catch {
+    /* cota estourada / serialização — ignora; o cache em memória continua valendo */
+  }
+}
 
 export function clearDataCache() {
   Object.keys(globalCache).forEach(key => delete globalCache[key])
+  if (typeof window !== "undefined") {
+    try {
+      const remover: string[] = []
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i)
+        if (k && k.startsWith(STORAGE_PREFIX)) remover.push(k)
+      }
+      remover.forEach(k => sessionStorage.removeItem(k))
+    } catch {
+      /* ignora */
+    }
+  }
   console.log("Cache de dados zerado para nova sessão.")
 }
 
@@ -37,7 +78,9 @@ export function useDataQuery<T>({
     if (!isSilent) setIsLoading(true)
     try {
       const result = await fetcherRef.current()
-      globalCache[cacheKey] = { data: result, timestamp: Date.now() }
+      const entry = { data: result, timestamp: Date.now() }
+      globalCache[cacheKey] = entry
+      persist(cacheKey, entry)
       setData(result)
       setError(null)
     } catch (err) {

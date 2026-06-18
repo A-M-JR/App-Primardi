@@ -348,7 +348,7 @@ export default function EmpresasPage() {
 
       {/* Dialog Criar/Editar */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-1rem)] sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar empresa" : "Nova empresa"}</DialogTitle>
             <DialogDescription>Dados cadastrais da empresa.</DialogDescription>
@@ -457,7 +457,7 @@ export default function EmpresasPage() {
 
       {/* Dialog Módulos (MASTER) */}
       <Dialog open={!!modulosEmpresa} onOpenChange={(o) => !o && setModulosEmpresa(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[calc(100%-1rem)] sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Módulos ativos</DialogTitle>
             <DialogDescription>{modulosEmpresa?.nomeFantasia} — habilite os módulos desta empresa.</DialogDescription>

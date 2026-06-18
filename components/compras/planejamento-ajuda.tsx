@@ -28,7 +28,7 @@ export function PlanejamentoAjuda({ variant = "detalhe" }: Props) {
           Dúvidas
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100%-1rem)] sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Como funciona o Planejamento de Compras?</DialogTitle>
           <DialogDescription>

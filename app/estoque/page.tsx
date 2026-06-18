@@ -92,7 +92,7 @@ export default function EstoquePage() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-lg bg-muted/40 p-4">
             <p className="text-[13px] text-muted-foreground">Itens ativos</p>
             <p className="text-2xl font-semibold mt-1">{kpis.total}</p>

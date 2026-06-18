@@ -184,12 +184,12 @@ export default function PedidoCompraDetalhePage({
 
       {/* Diálogo de recebimento */}
       <Dialog open={recebOpen} onOpenChange={setRecebOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[calc(100%-1rem)] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Registrar recebimento</DialogTitle>
             <DialogDescription>Informe a quantidade recebida agora. Dá entrada no estoque.</DialogDescription>
           </DialogHeader>
-          <div className="max-h-[55vh] overflow-y-auto -mx-1 px-1">
+          <div className="max-h-[55vh] overflow-x-auto overflow-y-auto -mx-1 px-1">
             <table className="w-full text-sm">
               <thead className="text-xs text-muted-foreground">
                 <tr>

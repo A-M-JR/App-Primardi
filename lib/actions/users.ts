@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
 import { getSession, setSession } from "@/lib/session"
+import { loadRequesterContext, loadSessionUser } from "@/lib/request-context"
 
 import { Prisma } from "@prisma/client"
 
@@ -113,92 +114,18 @@ export interface RequesterContext {
 }
 
 /**
- * Resolve a empresa inicial de um usuário sem depender da coluna legada
- * `User.empresaId`: usa o 1º membership ativo; para MASTER/TI sem membership,
- * cai na 1ª empresa cadastrada.
- */
-async function resolverEmpresaInicial(userId: number, crossTenant: boolean): Promise<number | null> {
-  const m = await prisma.userEmpresa.findFirst({
-    where: { userId, ativo: true },
-    orderBy: { empresaId: "asc" },
-    select: { empresaId: true },
-  })
-  if (m) return m.empresaId
-  if (crossTenant) {
-    const e = await prisma.empresa.findFirst({ orderBy: { id: "asc" }, select: { id: true } })
-    return e?.id ?? null
-  }
-  return null
-}
-
-/**
  * Contexto de autorização e multitenant da requisição.
  *
  * Fonte de verdade: o cookie de sessão (server-side). O parâmetro `userId`
- * é apenas fallback de compatibilidade durante a transição (chamadas antigas
- * que ainda passam o requesterId vindo do cliente). Não há mais fallback
- * silencioso para `empresaId: 1`.
+ * é apenas fallback de compatibilidade (chamadas antigas que ainda passam o
+ * requesterId vindo do cliente).
  *
- * O nível (MASTER/TI/PADRAO) vem do `User`; a role e as permissões vêm do
- * vínculo `UserEmpresa` da empresa ATIVA. MASTER/TI acessam qualquer empresa
- * mesmo sem membership; PADRAO precisa de membership ativo.
+ * A carga real — memoizada por request (React `cache`) e com as queries em
+ * paralelo — fica em `lib/request-context.ts`. Aqui só a reexpomos como Server
+ * Action. Assim as N actions de uma mesma requisição reaproveitam UMA carga.
  */
 export async function getRequesterContext(userId?: number): Promise<RequesterContext> {
-  const session = await getSession()
-  const resolvedId = session?.userId ?? (userId != null ? Number(userId) : undefined)
-
-  if (resolvedId == null) {
-    throw new Error("Não autenticado.")
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: resolvedId } })
-  if (!user || !user.ativo) {
-    throw new Error("Usuário não autorizado ou inativo.")
-  }
-
-  const nivelAcesso = user.nivelAcesso as RequesterContext["nivelAcesso"]
-  const crossTenant = nivelAcesso === "MASTER" || nivelAcesso === "TI"
-
-  // empresa ativa vem da sessão; fallback para a 1ª empresa acessível (memberships).
-  const empresaId = session?.empresaId ?? (await resolverEmpresaInicial(user.id, crossTenant))
-  if (empresaId == null) {
-    throw new Error("Usuário sem empresa vinculada.")
-  }
-
-  const membership = await prisma.userEmpresa.findUnique({
-    where: { userId_empresaId: { userId: user.id, empresaId } },
-  })
-
-  // PADRAO só acessa empresa onde tem membership ativo. MASTER/TI têm bypass.
-  if (!crossTenant) {
-    if (!membership || !membership.ativo) {
-      throw new Error("Usuário sem acesso a esta empresa.")
-    }
-  }
-
-  const empresa = await prisma.empresa.findUnique({
-    where: { id: empresaId },
-    select: { modulosAtivos: true },
-  })
-
-  const role: RequesterContext["role"] =
-    (membership?.role as RequesterContext["role"]) ?? (crossTenant ? "GERENTE" : "OPERADOR")
-
-  const permissoes = (membership?.permissoes as Record<string, string[]>) ?? {}
-  const modulosAtivos = Array.isArray(empresa?.modulosAtivos)
-    ? (empresa!.modulosAtivos as string[])
-    : []
-
-  return {
-    userId: user.id,
-    empresaId,
-    nivelAcesso,
-    role,
-    vendedorId: membership?.vendedorId ?? null,
-    permissoes,
-    modulosAtivos,
-    isAdmin: crossTenant || role === "GERENTE",
-  }
+  return loadRequesterContext(userId)
 }
 
 /**
@@ -209,7 +136,8 @@ export async function getEmpresasDoUsuario() {
   const session = await getSession()
   if (!session) throw new Error("Não autenticado.")
 
-  const user = await prisma.user.findUnique({ where: { id: session.userId } })
+  // Memoizado por request: reusa a mesma carga do usuário já feita no fluxo.
+  const user = await loadSessionUser(session.userId)
   if (!user || !user.ativo) throw new Error("Não autenticado.")
 
   const crossTenant = user.nivelAcesso === "MASTER" || user.nivelAcesso === "TI"

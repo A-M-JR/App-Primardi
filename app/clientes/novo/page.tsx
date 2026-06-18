@@ -14,7 +14,6 @@ import { toast } from "sonner"
 import { saveCliente } from "@/lib/actions/clientes"
 import { vincularLeadACliente } from "@/lib/actions/leads"
 import { getTabelasPreco } from "@/lib/actions/tabelas-preco"
-import Swal from "sweetalert2"
 import {
     Select,
     SelectContent,
@@ -276,6 +275,7 @@ function NovoClienteContent() {
             if (result && result.success === false && result.code === "DUPLICATE_CNPJ") {
                 const leadId = searchParams.get("leadId")
                 if (leadId) {
+                    const Swal = (await import("sweetalert2")).default
                     Swal.fire({
                         title: "Cliente Já Cadastrado!",
                         text: "Já existe um cliente na base com este CNPJ. Deseja vincular o Lead atual a este cliente existente?",

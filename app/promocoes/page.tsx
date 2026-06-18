@@ -85,7 +85,7 @@ export default function PromocoesPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-lg bg-muted/40 p-4"><p className="text-[13px] text-muted-foreground">Campanhas</p><p className="text-2xl font-semibold mt-1">{dados.length}</p></div>
           <div className="rounded-lg bg-emerald-500/5 p-4"><p className="text-[13px] text-emerald-600">Ativas</p><p className="text-2xl font-semibold mt-1 text-emerald-600">{ativas}</p></div>
         </div>

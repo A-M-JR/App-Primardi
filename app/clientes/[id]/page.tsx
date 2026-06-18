@@ -380,20 +380,20 @@ export default function ClienteDetailPage({
           <Tabs defaultValue={tabInicial} className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-6 bg-muted/20 p-1">
             <TabsTrigger value="geral" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <Building2 className="size-4 mr-2" />
-              Dados Gerais
+              <Building2 className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Dados Gerais</span>
             </TabsTrigger>
             <TabsTrigger value="crm" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <Target className="size-4 mr-2" />
-              CRM
+              <Target className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">CRM</span>
             </TabsTrigger>
             <TabsTrigger value="historico" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <History className="size-4 mr-2" />
-              Histórico
+              <History className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Histórico</span>
             </TabsTrigger>
             <TabsTrigger value="creditos" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <Wallet className="size-4 mr-2" />
-              Créditos
+              <Wallet className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">Créditos</span>
             </TabsTrigger>
           </TabsList>
 

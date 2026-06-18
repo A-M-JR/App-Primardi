@@ -3,7 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/lib/auth-context'
 import { AIProvider } from '@/lib/ai-context'
-import { AIChatPanel } from '@/components/ai-chat-panel'
+import { AIChatPanelLazy } from '@/components/ai-chat-panel-lazy'
 import './globals.css'
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
@@ -86,8 +86,8 @@ export default function RootLayout({
         <AuthProvider>
           <AIProvider>
             {children}
-            {/* Módulo IA — Chat flutuante acessível de qualquer tela */}
-            <AIChatPanel />
+            {/* Módulo IA — Chat flutuante (carregado sob demanda, fora do bundle inicial) */}
+            <AIChatPanelLazy />
           </AIProvider>
         </AuthProvider>
         <Analytics />

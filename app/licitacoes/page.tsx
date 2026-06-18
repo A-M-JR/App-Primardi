@@ -148,7 +148,7 @@ export default function LicitacoesPage() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <KpiCard label="Total" value={k?.total ?? 0} />
           <KpiCard label="Em andamento" value={k?.emAndamento ?? 0} tone="amber" />
           <KpiCard label="Ganhas / Atas" value={k?.ganhas ?? 0} tone="emerald" />

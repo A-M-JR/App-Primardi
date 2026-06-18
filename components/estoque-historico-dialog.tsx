@@ -41,7 +41,7 @@ export function EstoqueHistoricoDialog({ open, onOpenChange, produto }: EstoqueH
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[80vh] flex flex-col">
+      <DialogContent className="w-[calc(100%-1rem)] sm:max-w-xl max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clock className="size-5 text-primary" /> Histórico de Movimentação

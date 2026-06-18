@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useCallback, useMemo } from "react"
-import * as XLSX from "xlsx"
 import { AppShell } from "@/components/app-shell"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -98,6 +97,7 @@ export default function CobrancaPage() {
     setImportando(true)
     try {
       const buf = await file.arrayBuffer()
+      const XLSX = await import("xlsx")
       const wb = XLSX.read(buf, { type: "array" })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" })
@@ -192,7 +192,7 @@ export default function CobrancaPage() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-lg bg-muted/40 p-4">
             <p className="text-[13px] text-muted-foreground">Devedores</p>
             <p className="text-2xl font-semibold mt-1">{k?.devedores ?? 0}</p>
@@ -297,6 +297,7 @@ export default function CobrancaPage() {
                         {!titulos[d.id] ? (
                           <div className="flex items-center gap-2 text-muted-foreground py-2"><Loader2 className="size-3.5 animate-spin" /> Carregando...</div>
                         ) : (
+                          <div className="overflow-x-auto">
                           <table className="w-full">
                             <thead className="text-muted-foreground">
                               <tr><th className="text-left py-1">Título</th><th className="text-left py-1">Vencimento</th><th className="text-right py-1">Total</th></tr>
@@ -314,6 +315,7 @@ export default function CobrancaPage() {
                               })}
                             </tbody>
                           </table>
+                          </div>
                         )}
                       </div>
                     )}

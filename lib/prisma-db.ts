@@ -20,8 +20,21 @@ const globalForPrisma = global as unknown as {
   prismaSchemaVersion?: string
 }
 
-const connectionString = process.env.DB_URL_OFFICIAL || process.env.DATABASE_URL
-const pool = new Pool({ connectionString })
+// Runtime do APP (serverless/Vercel): use SEMPRE o endpoint POOLED do Neon
+// (host com "-pooler"). As migrations/`db push` usam o endpoint DIRETO via
+// DB_URL_OFFICIAL (ver prisma.config.ts). Por isso o runtime prioriza
+// DATABASE_URL (pooled) e só cai em DB_URL_OFFICIAL como fallback.
+const connectionString = process.env.DATABASE_URL || process.env.DB_URL_OFFICIAL
+
+// Em serverless cada instância mantém poucas conexões; o pooler do Neon
+// (PgBouncer) faz o pool real. Um `max` alto aqui só geraria tempestade de
+// conexões e cold starts. Timeouts curtos devolvem conexões ociosas ao pooler.
+const pool = new Pool({
+  connectionString,
+  max: Number(process.env.PG_POOL_MAX ?? 5),
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 10_000,
+})
 const adapter = new PrismaPg(pool as any)
 
 function createPrismaClient() {
@@ -55,7 +68,10 @@ if (process.env.NODE_ENV !== "production" && isStalePrismaClient(globalForPrisma
 
 export const prisma = globalForPrisma.prisma || createPrismaClient()
 
+// Reaproveita o client (e o pool pg) entre invocações QUENTES — inclusive em
+// produção serverless, onde abrir conexão nova ao Neon a cada request era o que
+// mais pesava. Em dev, o bloco acima cuida do reload por versão de schema.
+globalForPrisma.prisma = prisma
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma
   globalForPrisma.prismaSchemaVersion = PRISMA_SCHEMA_VERSION
 }
