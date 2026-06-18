@@ -11,7 +11,17 @@ import {
   type BuscarPncpParams,
   type PncpEdital,
 } from "@/lib/licitacoes/pncp"
+import { uploadR2, removerR2PorUrl, r2Configurado } from "@/lib/storage/r2"
 import { Prisma, type ModalidadeLicitacao, type StatusLicitacao } from "@prisma/client"
+
+interface AnexoLicitacao {
+  nome: string
+  url: string
+  tipo: string
+  tamanho: number
+  criadoEm: string
+  origem?: "PNCP" | "MANUAL"
+}
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null)
 const toDate = (v?: string | null) => (v ? new Date(v) : null)
@@ -257,6 +267,7 @@ export async function getLicitacao(id: number) {
     observacoes: lic.observacoes,
     fonteExterna: lic.fonteExterna,
     arquivos: (Array.isArray(lic.arquivos) ? lic.arquivos : []) as { titulo: string; tipo: string; url: string; data: string | null }[],
+    anexos: (Array.isArray(lic.anexos) ? lic.anexos : []) as unknown as AnexoLicitacao[],
     linkEditalExterno: lic.linkEdital,
     criadoEm: iso(lic.criadoEm),
     itens,
@@ -371,6 +382,99 @@ export async function excluirLicitacao(id: number) {
   await prisma.licitacao.deleteMany({ where: { id, empresaId: ctx.empresaId } })
   revalidatePath("/licitacoes")
   return { ok: true }
+}
+
+// ─────────────────────────────────────────────
+// Anexos (arquivos hospedados no R2)
+// ─────────────────────────────────────────────
+
+/** Registra um anexo já enviado ao R2 (via /api/upload scope=licitacao). */
+export async function adicionarAnexoLicitacao(
+  licitacaoId: number,
+  anexo: { nome: string; url: string; tipo: string; tamanho: number }
+) {
+  const ctx = await assertAcesso("licitacoes", "edit")
+  const lic = await prisma.licitacao.findFirst({
+    where: { id: licitacaoId, empresaId: ctx.empresaId },
+    select: { anexos: true },
+  })
+  if (!lic) throw new Error("Licitação não encontrada.")
+  const atuais = (Array.isArray(lic.anexos) ? lic.anexos : []) as unknown as AnexoLicitacao[]
+  const novo: AnexoLicitacao = {
+    nome: anexo.nome,
+    url: anexo.url,
+    tipo: anexo.tipo,
+    tamanho: anexo.tamanho,
+    criadoEm: new Date().toISOString(),
+    origem: "MANUAL",
+  }
+  await prisma.licitacao.update({
+    where: { id: licitacaoId },
+    data: { anexos: [...atuais, novo] as unknown as Prisma.InputJsonValue },
+  })
+  revalidatePath(`/licitacoes/${licitacaoId}`)
+  return { ok: true }
+}
+
+/** Remove um anexo do registro e do R2. */
+export async function removerAnexoLicitacao(licitacaoId: number, url: string) {
+  const ctx = await assertAcesso("licitacoes", "edit")
+  const lic = await prisma.licitacao.findFirst({
+    where: { id: licitacaoId, empresaId: ctx.empresaId },
+    select: { anexos: true },
+  })
+  if (!lic) throw new Error("Licitação não encontrada.")
+  const atuais = (Array.isArray(lic.anexos) ? lic.anexos : []) as unknown as AnexoLicitacao[]
+  await prisma.licitacao.update({
+    where: { id: licitacaoId },
+    data: { anexos: atuais.filter((a) => a.url !== url) as unknown as Prisma.InputJsonValue },
+  })
+  await removerR2PorUrl(url)
+  revalidatePath(`/licitacoes/${licitacaoId}`)
+  return { ok: true }
+}
+
+/** Baixa os documentos do edital (links PNCP) e hospeda no nosso R2. */
+export async function arquivarDocumentosPNCP(licitacaoId: number) {
+  const ctx = await assertAcesso("licitacoes", "edit")
+  if (!r2Configurado()) throw new Error("Storage (R2) não configurado.")
+  const lic = await prisma.licitacao.findFirst({
+    where: { id: licitacaoId, empresaId: ctx.empresaId },
+    select: { arquivos: true, anexos: true },
+  })
+  if (!lic) throw new Error("Licitação não encontrada.")
+  const arquivos = (Array.isArray(lic.arquivos) ? lic.arquivos : []) as unknown as { titulo: string; tipo: string; url: string }[]
+  if (!arquivos.length) return { arquivados: 0, total: 0 }
+  const anexos = (Array.isArray(lic.anexos) ? lic.anexos : []) as unknown as AnexoLicitacao[]
+
+  let arquivados = 0
+  let i = 0
+  for (const a of arquivos) {
+    i++
+    const nome = a.titulo || `documento-${i}`
+    if (anexos.some((an) => an.origem === "PNCP" && an.nome === nome)) continue // já arquivado
+    try {
+      const resp = await fetch(a.url, { signal: AbortSignal.timeout(20000) })
+      if (!resp.ok) continue
+      const ct = resp.headers.get("content-type") || "application/octet-stream"
+      const buf = Buffer.from(await resp.arrayBuffer())
+      const ext = ct.includes("pdf") ? "pdf" : ct.includes("zip") ? "zip" : ct.includes("html") ? "html" : "bin"
+      const key = `licitacoes/${ctx.empresaId}/${licitacaoId}/edital-${Date.now()}-${i}.${ext}`
+      const url = await uploadR2(key, buf, ct)
+      anexos.push({ nome, url, tipo: ct, tamanho: buf.length, criadoEm: new Date().toISOString(), origem: "PNCP" })
+      arquivados++
+    } catch {
+      /* ignora documento que falhar */
+    }
+  }
+  if (arquivados) {
+    await prisma.licitacao.update({
+      where: { id: licitacaoId },
+      data: { anexos: anexos as unknown as Prisma.InputJsonValue },
+    })
+    revalidatePath(`/licitacoes/${licitacaoId}`)
+  }
+  return { arquivados, total: arquivos.length }
 }
 
 // ─────────────────────────────────────────────

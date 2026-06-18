@@ -13,7 +13,7 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
-const PRISMA_SCHEMA_VERSION = "202606172800_chamados"
+const PRISMA_SCHEMA_VERSION = "202606173000_licitacao_anexos"
 
 const globalForPrisma = global as unknown as {
   prisma: PrismaClient

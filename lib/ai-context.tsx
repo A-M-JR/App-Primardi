@@ -17,6 +17,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { getAIConfig, updateAIConfig, getAIUsage, incrementAIUsage } from "./actions/config"
+import { useAuth } from "./auth-context"
 
 // ── Tipos do Módulo IA ──────────────────────────────────────
 export type AIProvider = "desativado" | "gpt-4o-mini" | "gemini-flash" | "abacus-route"
@@ -112,47 +113,45 @@ export function AIProvider({ children }: { children: ReactNode }) {
     const [config, setConfig] = useState<AIConfig>(DEFAULT_CONFIG)
     const [usage, setUsage] = useState<AIUsage>(DEFAULT_USAGE)
     const [history, setHistory] = useState<AIChatMessage[]>([])
+    const { currentUser } = useAuth()
 
 
-    // Carregar configs do banco ou localStorage na montagem
+    // Cache local (não exige autenticação) — carrega na montagem.
     useEffect(() => {
-        const fetchInitialData = async () => {
-            try {
-                // 1. Tenta carregar do localStorage primeiro (para velocidade/offline no mock)
-                const savedConfig = localStorage.getItem(STORAGE_KEY_CONFIG)
-                if (savedConfig) {
-                    setConfig(JSON.parse(savedConfig))
-                }
+        try {
+            const savedConfig = localStorage.getItem(STORAGE_KEY_CONFIG)
+            if (savedConfig) setConfig(JSON.parse(savedConfig))
+            const savedHistory = localStorage.getItem(STORAGE_KEY_HISTORY)
+            if (savedHistory) setHistory(JSON.parse(savedHistory))
+        } catch {
+            /* ignora cache inválido */
+        }
+    }, [])
 
-                // 2. Busca do Banco de Dados
+    // Config/uso do banco — SÓ quando autenticado (as actions exigem sessão).
+    useEffect(() => {
+        if (!currentUser) return
+        const fetchDbData = async () => {
+            try {
                 const dbConfig = await getAIConfig()
                 if (dbConfig) {
                     setConfig(dbConfig)
                     localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(dbConfig))
                 }
-
-                // 3. Carrega Uso
                 const dbUsage = await getAIUsage()
                 if (dbUsage) {
                     setUsage({
                         count: dbUsage.count,
                         tokensUsed: dbUsage.tokensUsed || 0,
-                        month: dbUsage.monthYear
+                        month: dbUsage.monthYear,
                     })
-                }
-
-                // 4. Carrega Histórico
-                const savedHistory = localStorage.getItem(STORAGE_KEY_HISTORY)
-                if (savedHistory) {
-                    setHistory(JSON.parse(savedHistory))
                 }
             } catch (error) {
                 console.error("Erro ao carregar dados de IA:", error)
             }
         }
-
-        fetchInitialData()
-    }, [])
+        fetchDbData()
+    }, [currentUser])
 
     const isActive = config.provider !== "desativado"
     const isConfigured = isActive && config.apiKey.length > 0

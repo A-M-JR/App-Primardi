@@ -36,6 +36,9 @@ import {
   Receipt,
   FileText,
   Download,
+  Upload,
+  Paperclip,
+  Archive,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
@@ -43,6 +46,9 @@ import {
   getLicitacao,
   atualizarStatusLicitacao,
   excluirLicitacao,
+  adicionarAnexoLicitacao,
+  removerAnexoLicitacao,
+  arquivarDocumentosPNCP,
 } from "@/lib/actions/licitacoes"
 import { excluirEmpenho } from "@/lib/actions/faturamento"
 import { exportLicitacaoXlsx } from "@/lib/licitacoes/export"
@@ -78,6 +84,8 @@ export default function LicitacaoDetalhePage() {
   const [empenhoEditId, setEmpenhoEditId] = useState<number | null>(null)
   const [excluirLic, setExcluirLic] = useState(false)
   const [excluirEmp, setExcluirEmp] = useState<number | null>(null)
+  const [uploadingAnexo, setUploadingAnexo] = useState(false)
+  const [arquivando, setArquivando] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -123,6 +131,49 @@ export default function LicitacaoDetalhePage() {
       load()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro.")
+    }
+  }
+
+  const onAnexoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    if (file.size > 20 * 1024 * 1024) return toast.error("Arquivo muito grande (máx. 20MB).")
+    setUploadingAnexo(true)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      fd.append("scope", "licitacao")
+      fd.append("licitacaoId", String(id))
+      const resp = await fetch("/api/upload", { method: "POST", body: fd })
+      if (resp.status === 503) { toast.error("Storage (R2) não configurado."); return }
+      if (!resp.ok) { toast.error("Falha no upload do anexo."); return }
+      const d = await resp.json()
+      await adicionarAnexoLicitacao(id, { nome: d.nome || file.name, url: d.url, tipo: d.tipo || file.type, tamanho: d.tamanho || file.size })
+      toast.success("Anexo adicionado.")
+      load()
+    } catch {
+      toast.error("Erro ao anexar.")
+    } finally {
+      setUploadingAnexo(false)
+    }
+  }
+
+  const removerAnexo = async (url: string) => {
+    try { await removerAnexoLicitacao(id, url); toast.success("Anexo removido."); load() }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Erro.") }
+  }
+
+  const arquivarPNCP = async () => {
+    setArquivando(true)
+    try {
+      const r = await arquivarDocumentosPNCP(id)
+      toast.success(`${r.arquivados} de ${r.total} documento(s) hospedado(s) no sistema.`)
+      load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao arquivar.")
+    } finally {
+      setArquivando(false)
     }
   }
 
@@ -208,13 +259,20 @@ export default function LicitacaoDetalhePage() {
           </CardContent>
         </Card>
 
-        {/* Documentos do edital */}
+        {/* Documentos do edital (links PNCP) */}
         {lic.arquivos.length > 0 && (
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-bold flex items-center gap-2 mb-3">
-                <FileText className="size-4 text-primary" /> Documentos do edital ({lic.arquivos.length})
-              </h3>
+              <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <h3 className="font-bold flex items-center gap-2">
+                  <FileText className="size-4 text-primary" /> Documentos do edital ({lic.arquivos.length})
+                </h3>
+                {podeEditar && (
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={arquivarPNCP} disabled={arquivando} title="Baixar do PNCP e hospedar no nosso storage">
+                    {arquivando ? <Loader2 className="size-3.5 animate-spin" /> : <Archive className="size-3.5" />} Hospedar no sistema
+                  </Button>
+                )}
+              </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {lic.arquivos.map((a, i) => (
                   <a
@@ -238,6 +296,54 @@ export default function LicitacaoDetalhePage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Anexos hospedados no sistema (R2) */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+              <h3 className="font-bold flex items-center gap-2">
+                <Paperclip className="size-4 text-primary" /> Anexos no sistema ({lic.anexos.length})
+              </h3>
+              {podeEditar && (
+                <label>
+                  <input type="file" className="hidden" onChange={onAnexoFile} disabled={uploadingAnexo} />
+                  <span className="inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium cursor-pointer hover:bg-muted">
+                    {uploadingAnexo ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                    {uploadingAnexo ? "Enviando..." : "Adicionar anexo"}
+                  </span>
+                </label>
+              )}
+            </div>
+            {lic.anexos.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-1">
+                Nenhum anexo. {podeEditar && "Envie arquivos (PDF, planilhas, imagens) ou use “Hospedar no sistema” nos documentos do edital."}
+              </p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {lic.anexos.map((a, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg border p-2.5 text-sm">
+                    <FileText className="size-4 text-primary shrink-0" />
+                    <a href={a.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{a.nome}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {a.origem === "PNCP" ? "do edital" : "anexo"}
+                        {a.tamanho ? ` · ${Math.max(1, Math.round(a.tamanho / 1024))} KB` : ""}
+                      </p>
+                    </a>
+                    <a href={a.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground shrink-0" title="Abrir/baixar">
+                      <Download className="size-4" />
+                    </a>
+                    {podeEditar && (
+                      <button onClick={() => removerAnexo(a.url)} className="text-destructive hover:text-destructive/80 shrink-0" title="Remover">
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Resumo financeiro (saldo) */}
         {temContrato && (

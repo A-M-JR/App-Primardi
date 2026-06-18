@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { unstable_noStore as noStore } from "next/cache"
 import { requireMaster, requireMasterOrTI } from "./users"
 import { MODULO_IDS } from "@/lib/modules"
+import { removerR2PorUrl } from "@/lib/storage/r2"
 
 export interface EmpresaInput {
   razaoSocial: string
@@ -86,10 +87,15 @@ export async function criarEmpresa(input: EmpresaInput) {
 /** Atualiza dados cadastrais (MASTER/TI). NÃO altera módulos ativos aqui. */
 export async function atualizarEmpresa(id: number, input: EmpresaInput) {
   await requireMasterOrTI()
+  const atual = await prisma.empresa.findUnique({ where: { id: Number(id) }, select: { logoUrl: true } })
   const empresa = await prisma.empresa.update({
     where: { id: Number(id) },
     data: toPrismaData(input),
   })
+  // Remove a logo antiga do R2 quando foi trocada (ignora se não for URL do R2).
+  if (atual?.logoUrl && atual.logoUrl !== (input.logoUrl ?? null)) {
+    await removerR2PorUrl(atual.logoUrl)
+  }
   revalidatePath("/empresas")
   return empresa
 }
@@ -97,7 +103,9 @@ export async function atualizarEmpresa(id: number, input: EmpresaInput) {
 /** Exclui empresa (MASTER/TI). Cascata remove vínculos e dados da empresa. */
 export async function excluirEmpresa(id: number) {
   await requireMasterOrTI()
+  const atual = await prisma.empresa.findUnique({ where: { id: Number(id) }, select: { logoUrl: true } })
   await prisma.empresa.delete({ where: { id: Number(id) } })
+  if (atual?.logoUrl) await removerR2PorUrl(atual.logoUrl)
   revalidatePath("/empresas")
   return { ok: true }
 }

@@ -1350,8 +1350,10 @@ model Licitacao {
   status      StatusLicitacao @default(ACOMPANHANDO)
   observacoes String?
 
-  // Documentos do edital (PNCP): [{ titulo, tipo, url, data }]
+  // Documentos do edital (PNCP, links externos): [{ titulo, tipo, url, data }]
   arquivos    Json?
+  // Anexos hospedados no nosso storage (R2): [{ nome, url, tipo, tamanho, criadoEm }]
+  anexos      Json?
 
   // Integração (PNCP / ConLicitação / etc.) — para dedupe na importação
   fonteExterna      String?

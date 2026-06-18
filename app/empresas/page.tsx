@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner"
 import { useAuth } from "@/lib/auth-context"
 import { MODULOS, MODULO_IDS, type ModuloId } from "@/lib/modules"
+import { compressImage } from "@/lib/storage/compress-image"
 import {
   listarEmpresas,
   getEmpresaById,
@@ -84,6 +85,8 @@ export default function EmpresasPage() {
   const [saving, setSaving] = useState(false)
 
   const [excluirId, setExcluirId] = useState<number | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoOriginal, setLogoOriginal] = useState<string | null>(null)
 
   const [modulosEmpresa, setModulosEmpresa] = useState<EmpresaRow | null>(null)
   const [modulosSel, setModulosSel] = useState<string[]>([])
@@ -108,16 +111,19 @@ export default function EmpresasPage() {
   const abrirNova = () => {
     setEditingId(null)
     setForm(emptyForm)
+    setLogoOriginal(null)
     setFormOpen(true)
   }
 
   const abrirEdicao = async (e: EmpresaRow) => {
     setEditingId(e.id)
     setForm({ ...emptyForm, razaoSocial: e.razaoSocial, nomeFantasia: e.nomeFantasia, cnpj: e.cnpj })
+    setLogoOriginal(null)
     setFormOpen(true)
     try {
       const full = await getEmpresaById(e.id)
       if (full) {
+        setLogoOriginal(full.logoUrl ?? null)
         setForm({
           razaoSocial: full.razaoSocial,
           nomeFantasia: full.nomeFantasia,
@@ -142,16 +148,42 @@ export default function EmpresasPage() {
     }
   }
 
-  const onLogoFile = (ev: React.ChangeEvent<HTMLInputElement>) => {
+  const onLogoFile = async (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0]
     ev.target.value = ""
     if (!file) return
     if (!file.type.startsWith("image/")) return toast.error("Selecione um arquivo de imagem.")
-    if (file.size > 400 * 1024) return toast.error("Logo muito grande (máx. 400KB). Use uma imagem menor/otimizada.")
-    const reader = new FileReader()
-    reader.onload = () => setForm((f) => ({ ...f, logoUrl: String(reader.result) }))
-    reader.onerror = () => toast.error("Não foi possível ler a imagem.")
-    reader.readAsDataURL(file)
+    if (file.size > 8 * 1024 * 1024) return toast.error("Imagem muito grande (máx. 8MB).")
+    setUploadingLogo(true)
+    try {
+      // Otimiza no navegador (redimensiona + WebP) antes de subir.
+      const blob = await compressImage(file, 512, 0.85)
+      const fd = new FormData()
+      fd.append("file", new File([blob], "logo.webp", { type: blob.type }))
+      fd.append("scope", "logo")
+      // Se já havia uma logo enviada nesta sessão (não a salva no banco), manda
+      // junto para o servidor apagá-la e não deixar órfã no bucket.
+      if (form.logoUrl && form.logoUrl.startsWith("http") && form.logoUrl !== logoOriginal) {
+        fd.append("previousUrl", form.logoUrl)
+      }
+      const resp = await fetch("/api/upload", { method: "POST", body: fd })
+      if (resp.ok) {
+        const { url } = await resp.json()
+        setForm((f) => ({ ...f, logoUrl: url }))
+      } else if (resp.status === 503) {
+        // R2 ainda não configurado → guarda a versão comprimida em base64 (interino).
+        const reader = new FileReader()
+        reader.onload = () => setForm((f) => ({ ...f, logoUrl: String(reader.result) }))
+        reader.readAsDataURL(blob)
+        toast.message("Logo salva no banco (storage R2 ainda não configurado).")
+      } else {
+        toast.error("Falha no upload da logo.")
+      }
+    } catch {
+      toast.error("Erro ao processar a logo.")
+    } finally {
+      setUploadingLogo(false)
+    }
   }
 
   const salvar = async () => {
@@ -372,9 +404,10 @@ export default function EmpresasPage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label>
-                  <input type="file" accept="image/*" className="hidden" onChange={onLogoFile} />
+                  <input type="file" accept="image/*" className="hidden" onChange={onLogoFile} disabled={uploadingLogo} />
                   <span className="inline-flex items-center gap-2 h-8 px-3 rounded-md border text-xs font-medium cursor-pointer hover:bg-muted">
-                    <ImageIcon className="size-3.5" /> {form.logoUrl ? "Trocar logo" : "Enviar logo"}
+                    {uploadingLogo ? <Loader2 className="size-3.5 animate-spin" /> : <ImageIcon className="size-3.5" />}
+                    {uploadingLogo ? "Enviando..." : form.logoUrl ? "Trocar logo" : "Enviar logo"}
                   </span>
                 </label>
                 {form.logoUrl && (
@@ -386,7 +419,7 @@ export default function EmpresasPage() {
                     <X className="size-3" /> Remover logo
                   </button>
                 )}
-                <span className="text-[10px] text-muted-foreground">PNG/JPG, de preferência fundo transparente, até 400KB.</span>
+                <span className="text-[10px] text-muted-foreground">PNG/JPG, de preferência fundo transparente. Otimizamos automaticamente (WebP ~512px).</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
