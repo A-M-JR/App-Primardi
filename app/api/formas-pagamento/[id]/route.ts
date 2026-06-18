@@ -1,24 +1,26 @@
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
+import { getRequesterContext } from "@/lib/actions/users"
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const ctx = await getRequesterContext()
     const { id } = await params
     const data = await req.json()
-    
+
     if (!id) {
       return NextResponse.json({ error: "ID é obrigatório" }, { status: 400 })
     }
 
     const now = new Date();
     await prisma.$executeRaw`
-      UPDATE "crm_formas_pagamento" 
+      UPDATE "crm_formas_pagamento"
       SET nome = ${data.nome}, ativo = ${data.ativo !== undefined ? data.ativo : true}, "quantidadeParcelas" = ${data.quantidadeParcelas !== undefined ? data.quantidadeParcelas : 1}, "updatedAt" = ${now}
-      WHERE id = ${Number(id)}
+      WHERE id = ${Number(id)} AND "empresaId" = ${ctx.empresaId}
     `
 
     const updated = await prisma.$queryRaw`
-      SELECT * FROM "crm_formas_pagamento" WHERE id = ${Number(id)} LIMIT 1
+      SELECT * FROM "crm_formas_pagamento" WHERE id = ${Number(id)} AND "empresaId" = ${ctx.empresaId} LIMIT 1
     ` as any[]
 
     return NextResponse.json(updated[0])
@@ -30,11 +32,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const ctx = await getRequesterContext()
     const { id } = await params
-    
+
     if (!id) {
       return NextResponse.json({ error: "ID é obrigatório" }, { status: 400 })
     }
+
+    // Confirma que a forma pertence à empresa ativa ANTES de qualquer operação.
+    const forma = await prisma.formaPagamento.findFirst({ where: { id: Number(id), empresaId: ctx.empresaId }, select: { id: true } })
+    if (!forma) return NextResponse.json({ error: "Forma de pagamento não encontrada" }, { status: 404 })
 
     // Verifica se está em uso primeiro
     const isUsedOrc = await prisma.orcamento.findFirst({ where: { formaPagamentoId: Number(id) } })
@@ -45,7 +52,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
 
     await prisma.$executeRaw`
-      DELETE FROM "crm_formas_pagamento" WHERE id = ${Number(id)}
+      DELETE FROM "crm_formas_pagamento" WHERE id = ${Number(id)} AND "empresaId" = ${ctx.empresaId}
     `
 
     return NextResponse.json({ success: true })

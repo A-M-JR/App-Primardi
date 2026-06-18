@@ -5,7 +5,7 @@ import { Vendedor } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 
 import { Prisma } from "@prisma/client"
-import { requireMasterOrTI } from "./users"
+import { requireMasterOrTI, getRequesterContext } from "./users"
 
 /**
  * Vendedores ativos de TODAS as empresas, com empresaId — para o editor de
@@ -33,9 +33,12 @@ export async function getVendedores(params: {
   const status = params.status || 'todos'
   const mode = params.mode || (params.page ? 'full' : 'dropdown') // Default to dropdown if no page
 
+  // Vendedores são por empresa — escopa pela empresa ativa da sessão.
+  const ctx = await getRequesterContext()
+
   if (mode === 'dropdown') {
     const dbVds = await prisma.vendedor.findMany({
-      where: { ativo: true },
+      where: { ativo: true, empresaId: ctx.empresaId },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, email: true, telefone: true }
     })
@@ -57,12 +60,12 @@ export async function getVendedores(params: {
       COUNT(*) FILTER (WHERE "ativo" = FALSE)::int as pausados,
       COUNT(*)::int as total_global
     FROM "crm_vendedores"
-    WHERE ("nome" ILIKE ${searchPattern} OR "email" ILIKE ${searchPattern})
+    WHERE "empresaId" = ${ctx.empresaId} AND ("nome" ILIKE ${searchPattern} OR "email" ILIKE ${searchPattern})
   `
   const stats = counts[0] || { total_filtrado: 0, ativos: 0, pausados: 0, total_global: 0 }
 
   // 2. Busca paginada
-  const where: any = {}
+  const where: any = { empresaId: ctx.empresaId }
   if (params.search) {
     where.OR = [
       { nome: { contains: params.search, mode: "insensitive" } },
@@ -96,8 +99,9 @@ export async function getVendedores(params: {
 }
 
 export async function saveVendedor(data: Partial<Vendedor>) {
+  const ctx = await getRequesterContext()
   const { id, ...rest } = data
-  
+
   const prismaData: any = {
     nome: rest.nome,
     email: rest.email?.toLowerCase(),
@@ -108,12 +112,14 @@ export async function saveVendedor(data: Partial<Vendedor>) {
   }
 
   if (!id || id > 1000000000) {
-    // New vendor
+    // Novo vendedor — sempre na empresa ativa da sessão.
     return prisma.vendedor.create({
-      data: prismaData
+      data: { ...prismaData, empresaId: ctx.empresaId }
     })
   } else {
-    // Update existing
+    // Confirma posse antes de editar (não permite mexer em vendedor de outra empresa).
+    const dono = await prisma.vendedor.findFirst({ where: { id: id as any, empresaId: ctx.empresaId }, select: { id: true } })
+    if (!dono) throw new Error("Vendedor não encontrado nesta empresa.")
     return prisma.vendedor.update({
       where: { id: id as any },
       data: prismaData
@@ -122,9 +128,10 @@ export async function saveVendedor(data: Partial<Vendedor>) {
 }
 
 export async function toggleVendedorActive(id: number) {
-  const vendedor = await prisma.vendedor.findUnique({ where: { id: id as any } })
+  const ctx = await getRequesterContext()
+  const vendedor = await prisma.vendedor.findFirst({ where: { id: id as any, empresaId: ctx.empresaId } })
   if (!vendedor) throw new Error("Vendedor não encontrado")
-  
+
   const updated = await prisma.vendedor.update({
     where: { id: id as any },
     data: { ativo: !vendedor.ativo },

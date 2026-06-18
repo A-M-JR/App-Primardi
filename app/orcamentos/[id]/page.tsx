@@ -720,7 +720,7 @@ function OrcamentoDetailContent({ id }: { id: string }) {
                       <ChevronDown className="ml-1 h-3 w-3 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[300px] p-0" align="end">
+                  <PopoverContent className="w-[300px] max-w-[calc(100vw-1rem)] p-0" align="end">
                     <Command>
                       <CommandInput placeholder="Buscar produto..." />
                       <CommandList>

@@ -18,6 +18,8 @@ export async function saveFornecedor(data: any, requesterId?: number) {
   const ctx = await getRequesterContext(requesterId)
   
   if (data.id) {
+    const dono = await prisma.fornecedor.findFirst({ where: { id: data.id, empresaId: ctx.empresaId }, select: { id: true } })
+    if (!dono) throw new Error("Fornecedor não encontrado nesta empresa.")
     return prisma.fornecedor.update({
       where: { id: data.id },
       data: {

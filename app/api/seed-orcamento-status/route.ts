@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireMasterOrTI } from '@/lib/actions/users'
 
 export async function GET() {
   try {
+    await requireMasterOrTI()
     await prisma.status.upsert({
       where: { id: 1 },
       update: { nome: 'Rascunho', cor: 'slate', ordem: 1, modulo: 'orcamento' },

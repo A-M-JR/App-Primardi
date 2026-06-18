@@ -28,7 +28,10 @@ export async function getOrcamentos(params: {
   if (dataFim) dataFim.setDate(dataFim.getDate() + 1)
   
   let vendedorId = params.vendedorId ? Number(params.vendedorId) : null
-  
+
+  // SEGURANÇA: tenant sempre escopado pela empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(params.requesterId)
+
   // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
   if (params.requesterId) {
     const ctx = await getRequesterContext(params.requesterId)
@@ -75,11 +78,12 @@ export async function getOrcamentos(params: {
       AND (${vendedorId}::int IS NULL OR p."vendedorId" = ${vendedorId})
       AND (${dataInicio}::timestamp IS NULL OR p."criadoEm" >= ${dataInicio})
       AND (${dataFim}::timestamp IS NULL OR p."criadoEm" < ${dataFim})
+      AND p."empresaId" = ${empresaId}
       AND p."ativo" = TRUE
   `
   const stats = counts[0] || { total_filtrado: 0, vigentes: 0, aprovados: 0, parados: 0, total_valor: 0 }
 
-  const where: any = { ativo: true }
+  const where: any = { ativo: true, empresaId }
   if (params.search) {
     where.OR = [
       { numero: { contains: params.search, mode: "insensitive" } },
@@ -153,8 +157,10 @@ export async function getOrcamentos(params: {
 }
 
 export async function getOrcamentoById(id: number, requesterId?: number) {
-  const orcamento = await prisma.orcamento.findUnique({
-    where: { id },
+  // SEGURANÇA: tenant sempre escopado pela empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(requesterId)
+  const orcamento = await prisma.orcamento.findFirst({
+    where: { id, empresaId },
     include: {
       cliente: true,
       vendedor: true,
@@ -238,6 +244,11 @@ export async function updateOrcamentoStatus(id: number, statusIdent: string | nu
     }
   }
 
+  // SEGURANÇA: garante que o orçamento pertence à empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(requesterId)
+  const dono = await prisma.orcamento.findFirst({ where: { id: Number(id), empresaId }, select: { id: true } })
+  if (!dono) throw new Error("Registro não encontrado nesta empresa.")
+
   const updated = await prisma.orcamento.update({
     where: { id },
     data: { statusId },
@@ -270,6 +281,11 @@ export async function deleteOrcamento(id: number, requesterId?: number) {
       if (!orc || orc.vendedorId !== ctx.vendedorId) throw new Error("Acesso negado.")
     }
   }
+
+  // SEGURANÇA: garante que o orçamento pertence à empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(requesterId)
+  const dono = await prisma.orcamento.findFirst({ where: { id: Number(id), empresaId }, select: { id: true } })
+  if (!dono) throw new Error("Registro não encontrado nesta empresa.")
 
   await prisma.orcamento.update({
     where: { id },
@@ -493,6 +509,10 @@ export async function saveOrcamento(data: any, requesterId?: number) {
     };
 
     const validItemIds = itens.filter((i: any) => i.id).map((i: any) => Number(i.id));
+
+      // SEGURANÇA: garante que o orçamento pertence à empresa ativa da sessão (evita sequestro de registro de outra empresa)
+      const dono = await prisma.orcamento.findFirst({ where: { id: Number(id), empresaId: ctx.empresaId }, select: { id: true } })
+      if (!dono) throw new Error("Registro não encontrado nesta empresa.")
 
       let sid = prismaData.statusId
       if (!sid) {

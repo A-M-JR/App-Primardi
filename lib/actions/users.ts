@@ -72,6 +72,7 @@ export async function getUsers(params: {
 }
 
 export async function toggleUserActive(id: number) {
+  await requireMasterOrTI()
   const user = await prisma.user.findUnique({ where: { id: id as any } })
   if (!user) throw new Error("Usuário não encontrado")
   
@@ -84,6 +85,7 @@ export async function toggleUserActive(id: number) {
 }
 
 export async function updateUserPassword(id: number, senha: string) {
+  await requireMasterOrTI()
   const hashedPassword = await bcrypt.hash(senha, 10)
   return prisma.user.update({
     where: { id: id as any },

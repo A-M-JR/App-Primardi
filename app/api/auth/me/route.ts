@@ -46,8 +46,11 @@ export async function GET() {
 
   const { empresas } = empresasResult
 
+  // NUNCA devolver o hash da senha ao cliente.
+  const { senha: _omitSenha, ...safeUser } = user
+
   return NextResponse.json({
-    user: { ...user, criadoEm: user.criadoEm.toISOString() },
+    user: { ...safeUser, criadoEm: user.criadoEm.toISOString() },
     vendor: vendor ? { ...vendor, criadoEm: vendor.criadoEm.toISOString() } : null,
     empresaAtivaId: session.empresaId,
     empresas,

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { processarImportacaoEstoque } from "@/lib/actions/estoque-importacao"
 
 import { previewEstoqueImport, listEstoqueSheetNames } from "@/lib/estoque/import-parser"
+import { getRequesterContext } from "@/lib/actions/users"
 
 
 
@@ -18,7 +19,13 @@ export async function POST(req: NextRequest) {
 
     const file = formData.get("file") as File | null
 
-    const requesterId = parseInt(String(formData.get("requesterId") || "1"), 10)
+    // Contexto vem da SESSÃO (não do form) — exige login e impede agir como user 1.
+    let requesterId: number
+    try {
+      requesterId = (await getRequesterContext()).userId
+    } catch {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 })
+    }
 
     const nomeAba = String(formData.get("nomeAba") || "") || undefined
 

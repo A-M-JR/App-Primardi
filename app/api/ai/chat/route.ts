@@ -20,6 +20,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { getAIContextSummary } from "@/lib/ai-data-context"
+import { getRequesterContext } from "@/lib/actions/users"
 
 interface ChatMessage {
     role: "user" | "assistant" | "system"
@@ -220,8 +221,17 @@ function translateAIError(msg: string): string {
 // ── Handler POST ────────────────────────────────────────────
 export async function POST(request: NextRequest) {
     try {
+        // Contexto (empresa/vendedor) vem da SESSÃO, nunca do corpo da requisição —
+        // senão qualquer um trocaria o empresaId e leria dados de outro tenant.
+        let ctx
+        try {
+            ctx = await getRequesterContext()
+        } catch {
+            return NextResponse.json({ error: "Não autenticado." }, { status: 401 })
+        }
+
         const body: ChatRequestBody = await request.json()
-        const { messages, provider, apiKey, systemPrompt, vendedorId, empresaId } = body
+        const { messages, provider, apiKey, systemPrompt } = body
 
         if (!apiKey || !provider || !messages?.length) {
             // console.error("[Módulo IA] Requisição inválida")
@@ -232,7 +242,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Monta o prompt combinando configuração básica com contexto live
-        const contextSummary = await getAIContextSummary(empresaId || 1, vendedorId)
+        const contextSummary = await getAIContextSummary(ctx.empresaId, ctx.vendedorId ?? undefined)
         // Invertendo a ordem: Instruções do usuário por último para terem mais peso
         const fullSystemPrompt = contextSummary + "\n\n" + systemPrompt
 

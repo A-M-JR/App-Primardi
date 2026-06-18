@@ -1,12 +1,15 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
-import { getRequesterVendedorId } from "./users"
+import { getRequesterVendedorId, getRequesterContext } from "./users"
 import { unstable_noStore as noStore } from "next/cache"
 
 export async function getComissoes(vendedorIdParam?: number, mes?: number, ano?: number, requesterId?: number) {
   let vendedorId = vendedorIdParam
-  
+
+  // SEGURANÇA: tenant sempre escopado pela empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(requesterId)
+
   // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
   if (requesterId) {
     const perm = await getRequesterVendedorId(requesterId)
@@ -14,11 +17,12 @@ export async function getComissoes(vendedorIdParam?: number, mes?: number, ano?:
       vendedorId = perm as number // Força o vendedorId dele
     }
   }
-  
+
   const where: any = {
     ativo: true,
+    empresaId,
     // Exclui Rascunho (1). Consideramos apenas pedidos confirmados/em produção/entregues.
-    statusId: { notIn: [1] } 
+    statusId: { notIn: [1] }
   }
   
   if (vendedorId) {

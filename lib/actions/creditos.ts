@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath, unstable_noStore as noStore } from "next/cache"
+import { getRequesterContext } from "./users"
 
 export async function addMovimentacaoCredito(data: {
   clienteId: number
@@ -12,10 +13,18 @@ export async function addMovimentacaoCredito(data: {
   orcamentoId?: number
 }) {
   noStore()
-  
+
   const { clienteId, tipo, operacao, quantidade, descricao, orcamentoId } = data
   const valorNum = Number(quantidade)
   const isCredito = operacao === 'CREDITO'
+
+  // Autoriza e valida posse: o cliente precisa pertencer à empresa ativa.
+  const ctx = await getRequesterContext()
+  const dono = await prisma.cliente.findFirst({
+    where: { id: Number(clienteId), empresaId: ctx.empresaId },
+    select: { id: true },
+  })
+  if (!dono) throw new Error("Cliente não encontrado nesta empresa.")
 
   return await prisma.$transaction(async (tx) => {
     // 1. Registra a movimentação via Raw SQL
@@ -48,6 +57,12 @@ export async function addMovimentacaoCredito(data: {
 
 export async function getMovimentacoesByCliente(clienteId: number) {
   noStore()
+  const ctx = await getRequesterContext()
+  const dono = await prisma.cliente.findFirst({
+    where: { id: Number(clienteId), empresaId: ctx.empresaId },
+    select: { id: true },
+  })
+  if (!dono) throw new Error("Cliente não encontrado nesta empresa.")
   return await prisma.$queryRaw`
     SELECT * FROM "crm_movimentacoes_credito" 
     WHERE "clienteId" = ${clienteId} 

@@ -3,6 +3,20 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { setSession } from "@/lib/session";
 
+// Rate-limit best-effort EM MEMÓRIA (por instância serverless — reseta em cold
+// start). Levanta a barra contra brute force ingênuo; para robustez em produção,
+// migrar para um store compartilhado (ex.: Upstash/Redis).
+const tentativasLogin = new Map<string, { count: number; resetAt: number }>()
+const MAX_TENTATIVAS = 8
+const JANELA_MS = 10 * 60 * 1000
+
+function registrarFalhaLogin(chave: string) {
+  const agora = Date.now()
+  const reg = tentativasLogin.get(chave)
+  if (!reg || agora >= reg.resetAt) tentativasLogin.set(chave, { count: 1, resetAt: agora + JANELA_MS })
+  else reg.count++
+}
+
 export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
@@ -11,22 +25,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email é obrigatório" }, { status: 400 });
     }
 
-    const user = await prisma.user.findFirst({
-      where: { email: email.toLowerCase(), ativo: true },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "user_not_found" }, { status: 404 });
+    const chaveLogin = String(email).toLowerCase();
+    const reg = tentativasLogin.get(chaveLogin);
+    if (reg && Date.now() < reg.resetAt && reg.count >= MAX_TENTATIVAS) {
+      return NextResponse.json({ error: "too_many_attempts" }, { status: 429 });
     }
 
-    if (!user.ativo) {
-      return NextResponse.json({ error: "user_blocked" }, { status: 403 });
+    const user = await prisma.user.findFirst({
+      where: { email: chaveLogin, ativo: true },
+    });
+
+    // Erro GENÉRICO para usuário inexistente/inativo OU senha errada — não revela
+    // qual dos dois falhou (evita enumeração de e-mails).
+    if (!user) {
+      registrarFalhaLogin(chaveLogin);
+      return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.senha);
     if (!passwordMatch) {
-      return NextResponse.json({ error: "invalid_password" }, { status: 401 });
+      registrarFalhaLogin(chaveLogin);
+      return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
     }
+
+    tentativasLogin.delete(chaveLogin);
 
     // Empresa ativa inicial: 1º membership ativo; MASTER/TI sem membership → 1ª
     // empresa. Não depende mais da coluna legada User.empresaId.
@@ -56,10 +78,12 @@ export async function POST(request: Request) {
       vendor = await prisma.vendedor.findUnique({ where: { id: vendId } });
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    // NUNCA devolver o hash da senha ao cliente.
+    const { senha: _omitSenha, ...safeUser } = user
+    return NextResponse.json({
+      success: true,
       user: {
-        ...user,
+        ...safeUser,
         criadoEm: user.criadoEm.toISOString()
       },
       vendor: vendor ? {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getRequesterContext } from "@/lib/actions/users"
 // import { prisma } from "@/lib/prisma"
 
 /**
@@ -8,6 +9,11 @@ import { NextRequest, NextResponse } from "next/server"
  */
 export async function GET() {
     try {
+        try {
+            await getRequesterContext()
+        } catch {
+            return NextResponse.json({ error: "Não autenticado." }, { status: 401 })
+        }
         /* Comentado até banco ser conectado
         let config = await prisma.aIConfig.findUnique({
             where: { id: "singleton" }
@@ -18,7 +24,7 @@ export async function GET() {
         const config = {
             id: "singleton",
             provider: "gemini-flash",
-            apiKey: "AIzaSyD_kCVvcfBvjN9P-_v5-godTnlrGBPXnJ8",
+            apiKey: process.env.GEMINI_API_KEY || "",
             systemPrompt: `Você é o Assistente Especialista da Primardi, responsável por auxiliar na gestão comercial de produtos. Pode realizar integrações ao vivo com o Banco de Dados.
 
 Sua personalidade: Profissional, eficiente e focado em resultados.
@@ -49,6 +55,11 @@ DIRETRIZES DE COMPORTAMENTO:
  */
 export async function POST(request: NextRequest) {
     try {
+        try {
+            await getRequesterContext()
+        } catch {
+            return NextResponse.json({ error: "Não autenticado." }, { status: 401 })
+        }
         const body = await request.json()
         // No mock, apenas retornamos o que recebemos como se estivesse salvo
         return NextResponse.json(body)

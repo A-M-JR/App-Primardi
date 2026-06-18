@@ -11,7 +11,10 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
   quarentaDiasAtras.setDate(quarentaDiasAtras.getDate() - 40)
 
   let vendedorId = vendedorIdParam
-  
+
+  // SEGURANÇA: tenant sempre escopado pela empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(requesterId)
+
   // SEGURANÇA: Se houver um requesterId, verifica se ele é vendedor limitado
   if (requesterId) {
     const ctx = await getRequesterContext(requesterId)
@@ -30,6 +33,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
       COUNT(*) FILTER (WHERE "statusId" NOT IN (SELECT id FROM "crm_status" WHERE "modulo" = 'PEDIDO' AND ("nome" ILIKE '%Entregue%' OR "nome" ILIKE '%Entrega%')))::int as ativos_count
     FROM "crm_pedidos"
     WHERE (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
+      AND "empresaId" = ${empresaId}
       AND "ativo" = TRUE
   `
   const pedStats = pedidoMetrics[0] || { total_receita: 0, ativos_count: 0 }
@@ -40,6 +44,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
     FROM "crm_orcamentos"
     WHERE "statusId" = 4
       AND (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
+      AND "empresaId" = ${empresaId}
       AND "ativo" = TRUE
   `
   const orcStats = orcamentoMetrics[0] || { total_orcamentos: 0 }
@@ -50,12 +55,14 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
     FROM "crm_clientes" c
     WHERE "ultimaCompra" < ${quarentaDiasAtras}
       AND "ultimaCompra" IS NOT NULL
+      AND c."empresaId" = ${empresaId}
       AND (${searchVendedor}::int IS NULL OR EXISTS (SELECT 1 FROM "crm_pedidos" p WHERE p."clienteId" = c.id AND p."vendedorId" = ${searchVendedor}))
   `
   const cliStats = clienteMetrics[0] || { inativos_count: 0 }
 
   const clientesInativosList = await prisma.cliente.findMany({
     where: {
+      empresaId,
       ultimaCompra: { lt: quarentaDiasAtras, not: null },
       pedidos: searchVendedor ? { some: { vendedorId: searchVendedor } } : undefined
     },
@@ -85,6 +92,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
       FROM "crm_orcamentos"
       WHERE "criadoEm" >= ${sixMonthsAgo}
         AND (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
+        AND "empresaId" = ${empresaId}
         AND "ativo" = TRUE
       GROUP BY ano, mes
       ORDER BY ano, mes
@@ -97,6 +105,7 @@ export async function getDashboardMetrics(vendedorIdParam?: number, requesterId?
       FROM "crm_pedidos"
       WHERE "criadoEm" >= ${sixMonthsAgo}
         AND (${searchVendedor}::int IS NULL OR "vendedorId" = ${searchVendedor})
+        AND "empresaId" = ${empresaId}
         AND "ativo" = TRUE
       GROUP BY ano, mes
       ORDER BY ano, mes

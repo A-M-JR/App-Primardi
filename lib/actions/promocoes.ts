@@ -130,8 +130,15 @@ export async function salvarPromocao(input: PromocaoInput) {
         precoPromo: it.precoPromo || 0,
         ordem: ordem++,
       }
-      if (it.id) await tx.promocaoItem.update({ where: { id: it.id }, data })
-      else await tx.promocaoItem.create({ data: { ...data, promocaoId: pid! } })
+      if (it.id) {
+        // SEGURANÇA: só atualiza o item se ele pertencer a esta promoção (que já é da empresa ativa),
+        // evitando sequestrar um item de promoção de outra empresa via it.id vindo do cliente.
+        const itemDono = await tx.promocaoItem.findFirst({ where: { id: it.id, promocaoId: pid! }, select: { id: true } })
+        if (!itemDono) throw new Error("Item de promoção não encontrado nesta empresa.")
+        await tx.promocaoItem.update({ where: { id: it.id }, data })
+      } else {
+        await tx.promocaoItem.create({ data: { ...data, promocaoId: pid! } })
+      }
     }
     return pid!
   })

@@ -592,7 +592,7 @@ function ClienteCombobox({
             <span className="truncate">{clienteNome || "Buscar cliente cadastrado..."}</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[360px] p-0" align="start">
+        <PopoverContent className="w-[360px] max-w-[calc(100vw-1rem)] p-0" align="start">
           <Command shouldFilter={false}>
             <CommandInput placeholder="Buscar por nome ou CNPJ..." value={query} onValueChange={setQuery} />
             <CommandList>

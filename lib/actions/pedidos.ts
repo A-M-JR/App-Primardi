@@ -32,11 +32,14 @@ export async function getPedidos(params: {
   
   const page = params.page || 1
   const limit = params.limit || 20
-  
-  const statusEmAnalise = await getOrCreateStatus(1, 'em_analise', ModuloStatus.PEDIDO)
-  const statusEmProducao = await getOrCreateStatus(1, 'em_producao', ModuloStatus.PEDIDO)
-  const statusSeparacao = await getOrCreateStatus(1, 'separacao', ModuloStatus.PEDIDO)
-  const statusEntregue = await getOrCreateStatus(1, 'entregue', ModuloStatus.PEDIDO)
+
+  // SEGURANÇA: tenant sempre escopado pela empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(params.requesterId)
+
+  const statusEmAnalise = await getOrCreateStatus(empresaId, 'em_analise', ModuloStatus.PEDIDO)
+  const statusEmProducao = await getOrCreateStatus(empresaId, 'em_producao', ModuloStatus.PEDIDO)
+  const statusSeparacao = await getOrCreateStatus(empresaId, 'separacao', ModuloStatus.PEDIDO)
+  const statusEntregue = await getOrCreateStatus(empresaId, 'entregue', ModuloStatus.PEDIDO)
 
   const searchPattern = `%${params.search || ""}%`
   const dataInicio = params.dataInicio ? new Date(params.dataInicio) : null
@@ -76,11 +79,12 @@ export async function getPedidos(params: {
       AND (${vendedorId}::int IS NULL OR p."vendedorId" = ${vendedorId})
       AND (${dataInicio}::timestamp IS NULL OR p."criadoEm" >= ${dataInicio})
       AND (${dataFim}::timestamp IS NULL OR p."criadoEm" < ${dataFim})
+      AND p."empresaId" = ${empresaId}
   `
   const stats = counts[0] || { total_filtrado: 0, em_analise: 0, em_producao_soma: 0, entregue: 0, separacao: 0, total_valor: 0 }
 
   // 2. Busca paginada dos registros
-  const where: any = {}
+  const where: any = { empresaId }
   if (params.search) {
     where.OR = [
       { numero: { contains: params.search, mode: "insensitive" } },
@@ -156,8 +160,10 @@ export async function getPedidos(params: {
 }
 
 export async function getPedidoById(id: number, requesterId?: number) {
-  const pedido = await prisma.pedido.findUnique({
-    where: { id },
+  // SEGURANÇA: tenant sempre escopado pela empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(requesterId)
+  const pedido = await prisma.pedido.findFirst({
+    where: { id, empresaId },
     include: {
       cliente: true,
       status: true,
@@ -247,10 +253,15 @@ export async function updatePedidoStatus(id: number, statusIdent: string | numbe
     }
   }
 
+  // SEGURANÇA: garante que o pedido pertence à empresa ativa da sessão (este update dispara baixa/estorno de estoque)
+  const { empresaId } = await getRequesterContext(requesterId)
+  const dono = await prisma.pedido.findFirst({ where: { id: Number(id), empresaId }, select: { id: true } })
+  if (!dono) throw new Error("Registro não encontrado nesta empresa.")
+
   const updated = await prisma.pedido.update({
     where: { id },
     data: { statusId },
-    include: { 
+    include: {
       status: true,
       cliente: true,
       vendedor: true,
@@ -319,6 +330,11 @@ export async function updatePedidoDetails(id: number, data: {
       if (!ped || ped.vendedorId !== ctx.vendedorId) throw new Error("Acesso negado.")
     }
   }
+
+  // SEGURANÇA: garante que o pedido pertence à empresa ativa da sessão
+  const { empresaId } = await getRequesterContext(requesterId)
+  const dono = await prisma.pedido.findFirst({ where: { id: Number(id), empresaId }, select: { id: true } })
+  if (!dono) throw new Error("Registro não encontrado nesta empresa.")
 
   const updated = await prisma.pedido.update({
     where: { id },
@@ -486,6 +502,10 @@ export async function savePedido(data: any, requesterId: number) {
     return created
   } else {
     // Update logic for existing order
+    // SEGURANÇA: garante que o pedido pertence à empresa ativa da sessão (evita sequestro de registro de outra empresa)
+    const dono = await prisma.pedido.findFirst({ where: { id: Number(id), empresaId: ctx.empresaId }, select: { id: true } })
+    if (!dono) throw new Error("Registro não encontrado nesta empresa.")
+
     const updated = await prisma.pedido.update({
       where: { id: Number(id) },
       data: {

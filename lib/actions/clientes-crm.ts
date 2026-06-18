@@ -197,6 +197,10 @@ export async function atualizarCrmCliente(
   data: { temperatura?: string | null; funilStatusId?: number | null }
 ) {
   const ctx = await getRequesterContext()
+  // Escopo de empresa ANTES de gravar (antes o write acontecia mesmo para cliente
+  // de outra empresa, e só depois o throw — sem desfazer a gravação).
+  const ok = await prisma.cliente.count({ where: { id: clienteId, empresaId: ctx.empresaId } })
+  if (!ok) throw new Error("Cliente não encontrado.")
   await prisma.cliente.update({
     where: { id: clienteId },
     data: {
@@ -204,9 +208,6 @@ export async function atualizarCrmCliente(
       ...(data.funilStatusId !== undefined ? { funilStatusId: data.funilStatusId } : {}),
     },
   })
-  // garante escopo de empresa
-  const ok = await prisma.cliente.count({ where: { id: clienteId, empresaId: ctx.empresaId } })
-  if (!ok) throw new Error("Cliente não encontrado.")
   revalidatePath(`/clientes/${clienteId}`)
   return { ok: true }
 }

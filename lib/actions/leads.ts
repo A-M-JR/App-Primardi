@@ -167,9 +167,18 @@ export async function createLead(data: any, requesterId?: number) {
 }
 
 export async function vincularLeadACliente(leadId: number, clienteId: number) {
+  const ctx = await getRequesterContext()
+  // Lead e cliente precisam pertencer à empresa ativa.
+  const [lead, cli] = await Promise.all([
+    prisma.lead.findFirst({ where: { id: leadId, empresaId: ctx.empresaId }, select: { id: true } }),
+    prisma.cliente.findFirst({ where: { id: clienteId, empresaId: ctx.empresaId }, select: { id: true } }),
+  ])
+  if (!lead) throw new Error("Lead não encontrado nesta empresa.")
+  if (!cli) throw new Error("Cliente não encontrado nesta empresa.")
+
   const updated = await prisma.lead.update({
     where: { id: leadId },
-    data: { 
+    data: {
       clienteId,
       dataConversao: new Date(),
       ativo: false // Opcional: marca como inativo para sair do funil ativo, ou manter true e mudar status. Vamos deixar inativo por enquanto, já que virou cliente.
@@ -178,8 +187,9 @@ export async function vincularLeadACliente(leadId: number, clienteId: number) {
   return updated;
 }
 export async function checkLeadClientMatch(leadId: number) {
-  const lead = await prisma.lead.findUnique({
-    where: { id: leadId },
+  const ctx = await getRequesterContext()
+  const lead = await prisma.lead.findFirst({
+    where: { id: leadId, empresaId: ctx.empresaId },
     select: { nomeEmpresa: true, email: true, telefone: true, empresaId: true }
   });
 

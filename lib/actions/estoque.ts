@@ -89,7 +89,8 @@ export async function getEstoqueProdutos(params: {
 }
 
 export async function getMovimentacoesEstoque(produtoId?: number) {
-  const where = produtoId ? { produtoId } : {}
+  const { empresaId } = await getRequesterContext()
+  const where: any = { empresaId, ...(produtoId ? { produtoId } : {}) }
   const movimentacoes = await prisma.movimentacaoEstoque.findMany({
     where,
     orderBy: { criadoEm: "desc" },
@@ -120,8 +121,8 @@ export async function addMovimentacaoEstoque(data: {
     const result = await prisma.$transaction(async (tx) => {
       // Pega o estoque atual bloqueando a linha (FOR UPDATE)
       const produto = await tx.$queryRaw`
-        SELECT estoque FROM "crm_produtos" 
-        WHERE id = ${data.produtoId} 
+        SELECT estoque FROM "crm_produtos"
+        WHERE id = ${data.produtoId} AND "empresaId" = ${empresaId}
         FOR UPDATE
       ` as any[]
 
@@ -140,9 +141,9 @@ export async function addMovimentacaoEstoque(data: {
 
       // 1. Atualiza o saldo no produto
       await tx.$executeRaw`
-        UPDATE "crm_produtos" 
-        SET estoque = ${estoqueDepois} 
-        WHERE id = ${data.produtoId}
+        UPDATE "crm_produtos"
+        SET estoque = ${estoqueDepois}
+        WHERE id = ${data.produtoId} AND "empresaId" = ${empresaId}
       `
 
       // 2. Registra o log da movimentação

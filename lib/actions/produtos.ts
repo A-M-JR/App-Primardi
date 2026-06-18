@@ -104,7 +104,9 @@ export async function getProdutosPaginated(params: {
 }
 
 export async function getProdutos() {
+  const { empresaId } = await getRequesterContext()
   const dbProdutos = await prisma.produto.findMany({
+    where: { empresaId },
     orderBy: { id: "desc" },
     include: {
       clientesAutorizados: {
@@ -127,7 +129,9 @@ export async function getProdutos() {
 }
 
 export async function getNextProdutoCode() {
+  const { empresaId } = await getRequesterContext()
   const lastProduto = await prisma.produto.findFirst({
+    where: { empresaId },
     orderBy: { id: 'desc' },
     select: { codigo: true }
   })
@@ -137,7 +141,7 @@ export async function getNextProdutoCode() {
   const lastCode = parseInt(lastProduto.codigo)
   if (isNaN(lastCode)) {
       // If the last code wasn't a number, count all and suggest next
-      const count = await prisma.produto.count()
+      const count = await prisma.produto.count({ where: { empresaId } })
       return (count + 1).toString()
   }
 
@@ -186,6 +190,9 @@ export async function saveProduto(data: any) {
       revalidatePath("/produtos")
       return created
     } else {
+      // Confirma posse antes de editar (senão um admin sequestraria produto de outra empresa).
+      const dono = await prisma.produto.findFirst({ where: { id: Number(id), empresaId }, select: { id: true } })
+      if (!dono) throw new Error("Produto não encontrado nesta empresa.")
       const updated = await prisma.$transaction(async (tx) => {
         // Remove vínculos antigos
         await tx.clienteProduto.deleteMany({
@@ -223,6 +230,9 @@ export async function saveProduto(data: any) {
 }
 
 export async function deleteProduto(id: number) {
+    const { empresaId } = await getRequesterContext()
+    const dono = await prisma.produto.findFirst({ where: { id: Number(id), empresaId }, select: { id: true } })
+    if (!dono) throw new Error("Produto não encontrado nesta empresa.")
     await prisma.produto.delete({
         where: { id }
     })

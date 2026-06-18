@@ -308,7 +308,7 @@ function CmedEanPicker({
           <Pill className="size-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[380px] p-0" align="end">
+      <PopoverContent className="w-[380px] max-w-[calc(100vw-1rem)] p-0" align="end">
         <Command shouldFilter={false}>
           <CommandInput placeholder="Buscar medicamento na CMED..." value={query} onValueChange={setQuery} />
           <CommandList>

@@ -12,7 +12,8 @@ export async function getClientes(params: {
   filter?: 'todos' | '30d' | '60d'
   mode?: 'full' | 'dropdown'
 } = {}) {
-  
+  const { empresaId } = await getRequesterContext()
+
   const page = params.page || 1
   const limit = params.limit || 20
   const search = params.search || ""
@@ -39,13 +40,14 @@ export async function getClientes(params: {
       COUNT(*) FILTER (WHERE "ultimaCompra" < ${sessentaDiasAtras} OR ("ultimaCompra" IS NULL AND "criadoEm" < ${sessentaDiasAtras}))::int as sem_compra_60,
       COUNT(*) FILTER (WHERE ${filterSql})::int as total_filtrado
     FROM "crm_clientes"
-    WHERE ("razaoSocial" ILIKE ${searchPattern} OR "cnpj" ILIKE ${searchPattern} OR "cidade" ILIKE ${searchPattern})
+    WHERE "empresaId" = ${empresaId} AND ("razaoSocial" ILIKE ${searchPattern} OR "cnpj" ILIKE ${searchPattern} OR "cidade" ILIKE ${searchPattern})
   `
   
   const stats = counts[0] || { total_global: 0, sem_compra_30: 0, sem_compra_60: 0, total_filtrado: 0 }
 
   // 2. Busca dos dados via Prisma para garantir integridade das relações
   const where: Prisma.ClienteWhereInput = {
+    empresaId,
     OR: [
       { razaoSocial: { contains: search, mode: 'insensitive' } },
       { cnpj: { contains: search, mode: 'insensitive' } },
@@ -103,9 +105,10 @@ export async function getClientes(params: {
 }
 
 export async function getClienteById(id: number) {
+  const { empresaId } = await getRequesterContext()
   // Busca via Raw SQL para garantir que pegamos os campos novos (nomeFantasia, etc)
   const results = await prisma.$queryRaw`
-    SELECT * FROM "crm_clientes" WHERE id = ${id}
+    SELECT * FROM "crm_clientes" WHERE id = ${id} AND "empresaId" = ${empresaId}
   ` as any[]
 
   if (results.length === 0) return null
@@ -219,6 +222,9 @@ export async function saveCliente(data: any) {
     revalidatePath("/clientes")
     return created
   } else {
+    // Confirma posse antes de editar (cliente carrega crédito/financeiro).
+    const dono = await prisma.cliente.findFirst({ where: { id: Number(id), empresaId }, select: { id: true } })
+    if (!dono) throw new Error("Cliente não encontrado nesta empresa.")
     const updated = await prisma.$transaction(async (tx) => {
       // Sincronização inteligente de itens exclusivos
       const itemIdsToKeep = itensExclusivos.map((it: any) => it.id).filter(Boolean).map(Number)
@@ -253,7 +259,7 @@ export async function saveCliente(data: any) {
           "saldoCreditoEtiquetas" = ${rest.saldoCreditoEtiquetas !== undefined ? rest.saldoCreditoEtiquetas : 0},
           "tabelaPrecoId" = ${rest.tabelaPrecoId ? Number(rest.tabelaPrecoId) : null},
           "updatedAt" = ${now}
-        WHERE id = ${Number(id)}
+        WHERE id = ${Number(id)} AND "empresaId" = ${empresaId}
       `
 
       for (const it of itensExclusivos) {

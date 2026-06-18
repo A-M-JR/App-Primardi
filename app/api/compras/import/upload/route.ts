@@ -4,13 +4,20 @@ import {
   criarImportacaoMultiFornecedor,
 } from "@/lib/actions/compras/importacao"
 import { vincularImportacoesAoPlanejamento } from "@/lib/actions/compras/planejamento"
+import { getRequesterContext } from "@/lib/actions/users"
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get("file") as File | null
     const fornecedorId = parseInt(String(formData.get("fornecedorId") || ""), 10)
-    const requesterId = parseInt(String(formData.get("requesterId") || "1"), 10)
+    // Contexto vem da SESSÃO (não do form) — exige login e impede agir como user 1.
+    let requesterId: number
+    try {
+      requesterId = (await getRequesterContext()).userId
+    } catch {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 })
+    }
     const multiFornecedor = formData.get("multiFornecedor") === "true"
     const nomeAba = String(formData.get("nomeAba") || "") || undefined
     const planejamentoId = parseInt(String(formData.get("planejamentoId") || ""), 10)

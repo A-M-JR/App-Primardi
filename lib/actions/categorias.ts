@@ -18,6 +18,8 @@ export async function saveCategoria(data: any, requesterId?: number) {
   const ctx = await getRequesterContext(requesterId)
   
   if (data.id) {
+    const dono = await prisma.categoria.findFirst({ where: { id: data.id, empresaId: ctx.empresaId }, select: { id: true } })
+    if (!dono) throw new Error("Categoria não encontrada nesta empresa.")
     return prisma.categoria.update({
       where: { id: data.id },
       data: {
